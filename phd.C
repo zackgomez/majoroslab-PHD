@@ -54,6 +54,11 @@ int Application::main(int argc,char *argv[])
   while(true) {
     SamRecord *rec=sam.nextRecord();
     if(!rec) break;
+    if(rec->flag_unmapped()) { delete rec; continue; }
+    cout<<rec->getID()<<"\t"<<rec->getRefName()<<"\t"<<rec->getRefPos()
+	<<"\tunmapped="<<rec->flag_unmapped()<<" rev="
+	<<rec->flag_revComp()<<"\t"<<rec->getCigar()<<endl;
+    delete rec;
   }
 
   return 0;
