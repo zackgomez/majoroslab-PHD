@@ -6,18 +6,29 @@
  ****************************************************************/
 #include <iostream>
 #include "SamReader.H"
+#include "BOOM/Pipe.H"
 using namespace std;
 using namespace BOOM;
 
 SamReader::SamReader(const String &filename)
+  : gzRegex("\\.gz$")
 {
   // ctor
 
-  if(Regex::search("\\\\.gz$",filename))
-    throw "Gzipped files are not supported in SamReader at this time";
-  fh.open(filename,"r");
-  headerChars+=("@"); 
-  headerChars+=("[");
+  //if(Regex::search("\\\\.gz$",filename))
+  //  throw "Gzipped files are not supported in SamReader at this time";
+  //fh.open(filename,"r");
+  fh=gzRegex.search(filename) ?
+    new GunzipPipe(filename) : new File(filename);
+  headerChars+=('@'); 
+  headerChars+=('[');
+}
+
+
+
+SamReader::~SamReader()
+{
+  delete fh;
 }
 
 
@@ -33,11 +44,11 @@ SamRecord *SamReader::nextRecord()
 
 SamRecord *SamReader::nextSeqAndText(String &line)
 {
-  line=fh.getline();
+  line=fh->getline();
   if(line=="") return NULL;
   while(line!="" && headerChars.isMember(line[0])) {
     if(line[0]=="@") headerLines.push_back(line);
-    line=fh.getline();
+    line=fh->getline();
   }
   if(line=="") return NULL;
   Vector<String> fields;
@@ -61,7 +72,7 @@ SamRecord *SamReader::nextSeqAndText(String &line)
 
 void SamReader::close()
 {
-  fh.close();
+  fh->close();
 }
 
 

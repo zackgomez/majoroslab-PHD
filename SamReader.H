@@ -19,14 +19,16 @@ using namespace BOOM;
 
 class SamReader {
 public:
-  SamReader(const String &filename);
+  SamReader(const String &filename); // sam file can be gzipped!
+  ~SamReader();
   SamRecord *nextSequence() { return nextRecord(); }
   SamRecord *nextRecord();
   SamRecord *nextSeqAndText(String &line);
   void close();
 private:
+  Regex gzRegex;
   Set<char> headerChars;
-  File fh;
+  File *fh;
   Vector<String> headerLines;
 };
 
