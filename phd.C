@@ -1,6 +1,7 @@
 /****************************************************************
- phd.C
- Copyright (C)2020 William H. Majoros (bmajoros@alumni.duke.edu)
+ phd.C : Piled Higher & Deeper
+
+ Copyright (C)2021 William H. Majoros (bmajoros@alumni.duke.edu)
  This is OPEN SOURCE SOFTWARE governed by the Gnu General Public
  License (GPL) version 3, as described at www.opensource.org.
  ****************************************************************/
@@ -9,13 +10,46 @@
 #include "BOOM/CommandLine.H"
 #include "BOOM/GffReader.H"
 #include "BOOM/Regex.H"
+#include "BOOM/Interval.H"
+#include "BOOM/Vector.H"
+#include "BOOM/VectorSorter.H"
+#include "BOOM/Pipe.H"
 #include "SamReader.H"
 using namespace std;
 using namespace BOOM;
 
+struct Variant {
+  int pos;
+  char ref, alt;
+  int genotype[2];
+  Variant() {}
+  Variant(int pos,char ref,char alt,int g[2])
+    : pos(pos), ref(ref), alt(alt) {genotype[0]=g[0]; genotype[1]=g[1];}
+};
+
 class Application {
   Regex pseudogeneRegex;
   Regex chrRegex;
+  String vcfFile;
+  void processExons(Vector<GffFeature*> &exons,
+		    Vector<Interval> &intervals,Vector<Variant> &,
+		    String &substrate);
+  void deleteExons(Vector<GffFeature*> &exons);
+  void getIntervals(Vector<GffFeature*> &exons,Vector<Interval> &into);
+  void getVariants(const String &substrate,
+		   const Vector<Interval> &intervals,
+		   Vector<Variant> &lines);
+  bool parseVariant(const String &line,int &pos,
+		    char &cRef,char &cAlt,int *genotype);
+  void filter(Vector<Variant> &,const Vector<Interval> &exons);
+  bool find(const Variant &,const Vector<Interval> &exons);
+  void processSam(SamReader &,Vector<Variant> &,Vector<Interval> &exons,
+		  int geneBegin,int geneEnd,const String &substrate);
+  int getLastPos(const Vector<Variant> &);
+  int getLastPos(const Vector<Interval> &exons);
+  void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,
+		     int &end);
+
 public:
   Application();
   int main(int argc,char *argv[]);
@@ -55,45 +89,248 @@ int Application::main(int argc,char *argv[])
   CommandLine cmd(argc,argv,"");
   if(cmd.numArgs()!=3)
     throw String("phd <indexed.vcf.gz> <sorted.gff> <in.sam>");
-  const String vcfFile=cmd.arg(0);
+  vcfFile=cmd.arg(0);
   const String gffFile=cmd.arg(1);
   const String samFile=cmd.arg(2);
 
+  // Open input files
   GffReader gff(gffFile);
+  SamReader sam(samFile);
+
+  // Process the GFF file line-by-line
+  String currentGene;
+  GffFeature *buffer=NULL;
+  Vector<GffFeature*> exons;
+  String chrom;
   while(true) {
-    GffFeature *feature=gff.nextFeature();
-    if(feature==NULL) break;
+    GffFeature *feature;
+    if(buffer) { feature=buffer; buffer=NULL; }
+    else { 
+      feature=gff.nextFeature(); if(feature==NULL) break; 
+      const String &geneID=feature->lookupExtra("gene_id");
+      if(currentGene!="" && geneID!=currentGene) {
+	buffer=feature;
+	if(exons.size()==0) continue;
+	Vector<Variant> variants;
+	Vector<Interval> exonIntervals;
+	int geneBegin, geneEnd;
+	getGeneLimits(exons,geneBegin,geneEnd);
+	String substrate;
+	processExons(exons,exonIntervals,variants,substrate);
+	if(substrate!=chrom)
+	  { cout<<"CHROM "<<substrate<<endl; chrom=substrate; }
+	deleteExons(exons);
+	if(variants.size()==0) continue;
+	processSam(sam,variants,exonIntervals,geneBegin,geneEnd,
+		   substrate);
+	//cout<<"============================================"<<endl;
+	continue;
+      }
+    }
+    currentGene=feature->lookupExtra("gene_id");
     if(feature->getFeatureType()!="exon" ||
        pseudogeneRegex.search(feature->lookupExtra("gene_type")) ||
-       feature->lookupExtra("transcript_support_level")!="1")
+       feature->lookupExtra("level")!="1")
+      //feature->lookupExtra("transcript_support_level")!="1")
       { delete feature; continue; }
-    const String &transcriptSupport=
-      feature->lookupExtra("transcript_support_level");
-    cout<<"SUPPORT="<<transcriptSupport<<endl;
-    cout<<"FEATURE="<<feature->getFeatureType()<<endl;
-    String substrate=feature->getSubstrate();
-    substrate=chrRegex.substitute(substrate,"");
-    cout<<"SUBSTRATE="<<substrate<<endl;
-    cout<<"GENETYPE="<<feature->lookupExtra("gene_type")<<endl;
-    cout<<"gene_id="<<feature->lookupExtra("gene_id")<<endl;
-    cout<<"=============================================="<<endl;
-    delete feature;
+    exons.push_back(feature);
   }
-
-  return 0;
-
-  // Process sam file
-  SamReader sam(samFile);
-  while(true) {
-    SamRecord *rec=sam.nextRecord();
-    if(!rec) break;
-    if(rec->flag_unmapped()) { delete rec; continue; }
-    /*cout<<rec->getID()<<"\t"<<rec->getRefName()<<"\t"<<rec->getRefPos()
-	<<"\tunmapped="<<rec->flag_unmapped()<<" rev="
-	<<rec->flag_revComp()<<"\t"<<rec->getCigar()<<endl;*/
-    delete rec;
-  }
-
   return 0;
 }
+
+
+
+void Application::getGeneLimits(const Vector<GffFeature*> &exons,
+				int &begin,int &end)
+{
+  //cout<<exons.size()<<" exons"<<endl;
+  begin=-1; end=-1;
+  for(Vector<GffFeature*>::const_iterator cur=exons.begin(),
+	End=exons.end() ; cur!=End ; ++cur) {
+    const GffFeature *exon=*cur;
+    int b=exon->getBegin(), e=exon->getEnd();
+    if(begin==-1) { begin=b; end=e; continue; }
+    if(b<begin) begin=b;
+    if(e>end) end=e;
+  }
+}
+
+
+
+int Application::getLastPos(const Vector<Variant> &variants)
+{
+  int pos=-1;
+  for(Vector<Variant>::const_iterator cur=variants.begin(), end=
+	variants.end() ; cur!=end ; ++cur) {
+    const Variant &v=*cur;
+    if(v.pos>pos) pos=v.pos;
+  }
+  return pos;
+}
+
+
+
+int Application::getLastPos(const Vector<Interval> &exons)
+{
+  int pos=-1;
+  for(Vector<Interval>::const_iterator cur=exons.begin(), end=
+	exons.end() ; cur!=end ; ++cur) {
+    const Interval &v=*cur;
+    if(v.getEnd()>pos) pos=v.getEnd();
+  }
+  return pos;
+}
+
+
+void Application::processSam(SamReader &sam,Vector<Variant> &variants,
+			     Vector<Interval> &exons,int geneBegin,
+			     int geneEnd,const String &substrate)
+{
+  static SamRecord *buffer=NULL;
+  //int skipped=0;
+  int kept=0;
+  while(true) {
+    SamRecord *rec;
+    if(buffer) { rec=buffer; buffer=NULL; }
+    else rec=sam.nextRecord();
+    if(!rec) break;
+    if(rec->flag_unmapped()) { delete rec; continue; }
+    String readSubstrate=rec->getRefName();
+    readSubstrate=chrRegex.substitute(readSubstrate,"");
+    if(readSubstrate<substrate) { delete rec; continue; } // ### ???
+    if(rec->getRefPos()+rec->getSequence().getLength()<geneBegin)
+      { delete rec; continue; }
+    //cout<<"READ: "<<rec->getRefPos()<<endl;
+    if(rec->getRefPos()>geneEnd) { buffer=rec; break;}
+    delete rec;
+    ++kept;
+    //++skipped;
+  }
+  cout<<"KEPT READS: "<<kept<<endl;
+}
+
+
+void Application::processExons(Vector<GffFeature*> &exons,
+			       Vector<Interval> &intervals,
+			       Vector<Variant> &variants,
+			       String &substrate)
+{
+  if(exons.size()==0) return;
+  GffFeature &exon=*exons[0];
+  substrate=exon.getSubstrate();
+  substrate=chrRegex.substitute(substrate,"");
+  getIntervals(exons,intervals);
+  //cout<<"SUBSTRATE: "<<substrate<<endl;
+  /*for(Vector<Interval>::iterator cur=intervals.begin(), 
+	end=intervals.end() ; cur!=end ; ++cur)
+	cout<<*cur<<endl;*/
+  getVariants(substrate,intervals,variants);
+  //cout<<"VARIANTS:"<<endl;
+  for(Vector<Variant>::iterator cur=variants.begin(), end=variants.end() ;
+      cur!=end ; ++cur) {
+    Variant v=*cur;
+    cout<<v.pos<<"\t"<<v.ref<<"\t"<<v.alt<<"\t"<<v.genotype[0]<<"|"
+	<<v.genotype[1]<<endl;
+  }
+}
+
+
+
+void Application::getIntervals(Vector<GffFeature*> &exons,
+			       Vector<Interval> &into)
+{
+  for(Vector<GffFeature*>::iterator cur=exons.begin(), end=exons.end() ;
+      cur!=end ; ++cur) {
+    const GffFeature *feature=*cur;
+    into.push_back(Interval(feature->getBegin(),feature->getEnd()));
+  }
+
+  IntervalComparator cmp;
+  VectorSorter<Interval> sorter(into,cmp);
+  sorter.sortAscendInPlace();
+  Interval::Union(into);
+}
+
+
+
+void Application::deleteExons(Vector<GffFeature*> &exons)
+{
+  for(Vector<GffFeature*>::iterator cur=exons.begin(), end=exons.end() ;
+      cur!=end ; ++cur)
+    delete *cur;
+  exons.clear();
+}
+
+
+
+void Application::getVariants(const String &substrate,
+			      const Vector<Interval> &intervals,
+			      Vector<Variant> &variants)
+{
+  for(Vector<Interval>::const_iterator cur=intervals.begin(), 
+	end=intervals.end() ; cur!=end ; ++cur) {
+    Interval interval=*cur;
+    const String cmd=String("tabix ")+vcfFile+" "+substrate+":"
+      +String(interval.getBegin())+"-"+String(interval.getEnd());
+    Pipe pipe(cmd,"r");
+    while(!pipe.eof()) {
+      const String line=pipe.getline();
+      if(line.length()>0 && line[0]=='#') continue;
+      int pos; char ref,alt; int genotype[2];
+      if(!parseVariant(line,pos,ref,alt,genotype)) continue;
+      Variant v(pos,ref,alt,genotype);
+      variants.push_back(v);
+    }
+    pipe.close();
+  }
+  filter(variants,intervals);
+}
+
+
+
+bool Application::parseVariant(const String &line,int &pos,
+			       char &cRef,char &cAlt,int *genotype)
+{
+  Vector<String> fields;
+  line.getFields(fields,"\t");
+  if(fields.size()<9 || fields[6]!="PASS" || fields[8]!="GT") 
+    return false;
+  String sGenotype=fields[9];
+
+  // ### This is not fully generic:
+  if(sGenotype=="0|1") { genotype[0]=0; genotype[1]=1; }
+  else if(sGenotype=="1|0") { genotype[0]=1; genotype[1]=0; }
+  else return false;
+
+  pos=fields[1].asInt()-1; // Convert 1-based coord to 0-based
+  String ref=fields[3], alt=fields[4];
+  if(ref.length()!=1 || alt.length()!=1) return false;
+  cRef=ref[0]; cAlt=alt[0];
+  if(cRef!='A' && cRef!='C' && cRef!='G' && cRef!='T') return false;
+  if(cAlt!='A' && cAlt!='C' && cAlt!='G' && cAlt!='T') return false;
+  return true;
+}
+
+
+
+void Application::filter(Vector<Variant> &variants,
+			 const Vector<Interval> &exons)
+{
+  int n=variants.size();
+  for(int i=0 ; i<n ; ++i) {
+    if(!find(variants[i],exons)) { variants.cut(i); --i; --n; }
+  }
+}
+
+
+
+bool Application::find(const Variant &v,const Vector<Interval> &exons)
+{
+  for(Vector<Interval>::const_iterator cur=exons.begin(), end=exons.end();
+      cur!=end ; ++cur)
+    if((*cur).contains(v.pos)) return true;
+  return false;
+}
+
+
 
