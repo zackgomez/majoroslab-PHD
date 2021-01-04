@@ -14,6 +14,7 @@
 #include "BOOM/Vector.H"
 #include "BOOM/VectorSorter.H"
 #include "BOOM/Pipe.H"
+#include "BOOM/Array2D.H"
 #include "SamReader.H"
 using namespace std;
 using namespace BOOM;
@@ -22,6 +23,7 @@ struct Variant {
   int pos;
   char ref, alt;
   int genotype[2];
+  Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
   Variant() {}
   Variant(int pos,char ref,char alt,int g[2])
     : pos(pos), ref(ref), alt(alt) {genotype[0]=g[0]; genotype[1]=g[1];}
@@ -49,6 +51,7 @@ class Application {
   int getLastPos(const Vector<Interval> &exons);
   void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,
 		     int &end);
+  void addEdges(const SamRecord *read,Vector<Variant> &graph);
 
 public:
   Application();
@@ -187,7 +190,6 @@ void Application::processSam(SamReader &sam,Vector<Variant> &variants,
 			     int geneEnd,const String &substrate)
 {
   static SamRecord *buffer=NULL;
-  //int skipped=0;
   int kept=0;
   while(true) {
     SamRecord *rec;
@@ -200,14 +202,14 @@ void Application::processSam(SamReader &sam,Vector<Variant> &variants,
     if(readSubstrate<substrate) { delete rec; continue; } // ### ???
     if(rec->getRefPos()+rec->getSequence().getLength()<geneBegin)
       { delete rec; continue; }
-    //cout<<"READ: "<<rec->getRefPos()<<endl;
     if(rec->getRefPos()>geneEnd) { buffer=rec; break;}
+    addEdges(rec,variants);
     delete rec;
     ++kept;
-    //++skipped;
   }
   cout<<"KEPT READS: "<<kept<<endl;
 }
+
 
 
 void Application::processExons(Vector<GffFeature*> &exons,
@@ -333,4 +335,19 @@ bool Application::find(const Variant &v,const Vector<Interval> &exons)
 }
 
 
+
+void Application::addEdges(const SamRecord *read,
+			   Vector<Variant> &graph)
+{
+  const CigarString &cigar=read->getCigar();
+  CigarAlignment &alignment=*cigar.getAlignment();
+  const int L=alignment.length();
+  int firstRefPos=alignment[0], lastRefPos=alignment[L-1]; // ### wrong
+
+  cout<<"ALIGNMENT: "<<firstRefPos<<"\t"<<lastRefPos<<endl;
+
+    // ### Have to adress soft masks in CigarAlignment (not implemented)
+
+  delete &alignment;
+}
 

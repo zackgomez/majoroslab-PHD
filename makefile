@@ -6,6 +6,11 @@ LDFLAGS		= $(OPTIMIZE)
 BOOM		= BOOM
 OBJ		= obj
 LIBS		= -LBOOM -lBOOM -lgsl -lm -lgslcblas
+
+.PHONY : clean
+clean:
+	@rm -f obj/*.o
+
 #---------------------------------------------------------
 $(OBJ)/phd.o:\
 		phd.C
