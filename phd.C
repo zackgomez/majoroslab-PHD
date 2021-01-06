@@ -20,13 +20,15 @@ using namespace std;
 using namespace BOOM;
 
 struct Variant {
+  String ID;
   int pos;
   char ref, alt;
   int genotype[2];
   Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
   Variant() {}
-  Variant(int pos,char ref,char alt,int g[2])
-    : pos(pos), ref(ref), alt(alt) {genotype[0]=g[0]; genotype[1]=g[1];}
+  Variant(String ID,int pos,char ref,char alt,int g[2])
+    : ID(ID), pos(pos), ref(ref), alt(alt) 
+  { genotype[0]=g[0]; genotype[1]=g[1]; }
 };
 
 class Application {
@@ -41,7 +43,7 @@ class Application {
   void getVariants(const String &substrate,
 		   const Vector<Interval> &intervals,
 		   Vector<Variant> &lines);
-  bool parseVariant(const String &line,int &pos,
+  bool parseVariant(const String &line,String &ID,int &pos,
 		    char &cRef,char &cAlt,int *genotype);
   void filter(Vector<Variant> &,const Vector<Interval> &exons);
   bool find(const Variant &,const Vector<Interval> &exons);
@@ -231,8 +233,8 @@ void Application::processExons(Vector<GffFeature*> &exons,
   for(Vector<Variant>::iterator cur=variants.begin(), end=variants.end() ;
       cur!=end ; ++cur) {
     Variant v=*cur;
-    cout<<v.pos<<"\t"<<v.ref<<"\t"<<v.alt<<"\t"<<v.genotype[0]<<"|"
-	<<v.genotype[1]<<endl;
+    cout<<v.ID<<"\t"<<v.pos<<"\t"<<v.ref<<"\t"<<v.alt<<"\t"
+	<<v.genotype[0]<<"|"<<v.genotype[1]<<endl;
   }
 }
 
@@ -278,9 +280,9 @@ void Application::getVariants(const String &substrate,
     while(!pipe.eof()) {
       const String line=pipe.getline();
       if(line.length()>0 && line[0]=='#') continue;
-      int pos; char ref,alt; int genotype[2];
-      if(!parseVariant(line,pos,ref,alt,genotype)) continue;
-      Variant v(pos,ref,alt,genotype);
+      String ID; int pos; char ref,alt; int genotype[2];
+      if(!parseVariant(line,ID,pos,ref,alt,genotype)) continue;
+      Variant v(ID,pos,ref,alt,genotype);
       variants.push_back(v);
     }
     pipe.close();
@@ -290,7 +292,7 @@ void Application::getVariants(const String &substrate,
 
 
 
-bool Application::parseVariant(const String &line,int &pos,
+bool Application::parseVariant(const String &line,String &ID,int &pos,
 			       char &cRef,char &cAlt,int *genotype)
 {
   Vector<String> fields;
@@ -305,6 +307,7 @@ bool Application::parseVariant(const String &line,int &pos,
   else return false;
 
   pos=fields[1].asInt()-1; // Convert 1-based coord to 0-based
+  ID=fields[2]; 
   String ref=fields[3], alt=fields[4];
   if(ref.length()!=1 || alt.length()!=1) return false;
   cRef=ref[0]; cAlt=alt[0];
@@ -343,8 +346,35 @@ void Application::addEdges(const SamRecord *read,
   CigarAlignment &alignment=*cigar.getAlignment();
   const int L=alignment.length();
   int firstRefPos=alignment[0], lastRefPos=alignment[L-1]; // ### wrong
-
-  cout<<"ALIGNMENT: "<<firstRefPos<<"\t"<<lastRefPos<<endl;
+  const int offset=read->getRefPos();
+  Interval refInterval(offset+firstRefPos,offset+lastRefPos+1);
+  bool containsVariant=false;
+  for(Vector<Variant>::iterator cur=graph.begin(), end=graph.end() ; 
+      cur!=end ; ++cur) {
+    if(refInterval.contains((*cur).pos)) { containsVariant=true; break; }
+  }
+  if(containsVariant) {
+    CigarAlignment &inverse=*alignment.invert(lastRefPos-firstRefPos+1);
+    for(Vector<Variant>::iterator cur=graph.begin(), end=graph.end() ; 
+	cur!=end ; ++cur) {
+      Variant &v=*cur;
+      if(refInterval.contains(v.pos)) { 
+	const int readPos=inverse[v.pos-offset];
+	cout<<read->getID()<<" CONTAINS VARIANT AT POS "<<readPos<<endl;
+	if(readPos<0) cout<<"\tUNMAPPED"<<endl;
+	else {
+	  const String &seq=read->getSequence();
+	  if(readPos>seq.length()) {
+	    cout<<"COORD ERROR: "<<readPos<<">"<<seq.length()<<endl;
+	    throw "COORD ERROR";
+	  }
+	  cout<<"\t"<<v.ID<<" ALLELE IN READ: "<<seq[readPos]
+	      <<" REV="<<read->flag_revComp()<<endl;
+	}
+      }
+    }
+    delete &inverse;
+  }
 
     // ### Have to adress soft masks in CigarAlignment (not implemented)
 
