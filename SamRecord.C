@@ -26,7 +26,7 @@ const String &SamRecord::getID() const
 
 
 
-const CigarString &SamRecord::getCigar() const
+const SamCigarString &SamRecord::getCigar() const
 {
   return CIGAR;
 }

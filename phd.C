@@ -19,6 +19,11 @@
 using namespace std;
 using namespace BOOM;
 
+enum SNP_ALLELE {
+  REF=0,
+  ALT=1
+};
+
 struct Variant {
   String ID;
   int pos;
@@ -27,8 +32,16 @@ struct Variant {
   Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
   Variant() {}
   Variant(String ID,int pos,char ref,char alt,int g[2])
-    : ID(ID), pos(pos), ref(ref), alt(alt) 
-  { genotype[0]=g[0]; genotype[1]=g[1]; }
+    : ID(ID), pos(pos), ref(ref), alt(alt), edges(2,2)
+  { genotype[0]=g[0]; genotype[1]=g[1]; edges.setAllTo(0); }
+};
+
+struct VariantInRead {
+  Variant &v;
+  int pos; // position in read
+  SNP_ALLELE allele;
+  VariantInRead(Variant &v,int pos,SNP_ALLELE a)
+    : v(v), pos(pos), allele(a) {}
 };
 
 class Application {
@@ -51,10 +64,12 @@ class Application {
 		  int geneBegin,int geneEnd,const String &substrate);
   int getLastPos(const Vector<Variant> &);
   int getLastPos(const Vector<Interval> &exons);
-  void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,
-		     int &end);
+  void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,int &end);
   void addEdges(const SamRecord *read,Vector<Variant> &graph);
-
+  void installEdges(Vector<VariantInRead> &);
+  void findVariantsInRead(Vector<Variant> &,const SamRecord *,
+			  CigarAlignment &,Vector<VariantInRead> &);
+  void processGraph(Vector<Variant> &);
 public:
   Application();
   int main(int argc,char *argv[]);
@@ -128,7 +143,7 @@ int Application::main(int argc,char *argv[])
 	if(variants.size()==0) continue;
 	processSam(sam,variants,exonIntervals,geneBegin,geneEnd,
 		   substrate);
-	//cout<<"============================================"<<endl;
+	processGraph(variants);
 	continue;
       }
     }
@@ -148,7 +163,6 @@ int Application::main(int argc,char *argv[])
 void Application::getGeneLimits(const Vector<GffFeature*> &exons,
 				int &begin,int &end)
 {
-  //cout<<exons.size()<<" exons"<<endl;
   begin=-1; end=-1;
   for(Vector<GffFeature*>::const_iterator cur=exons.begin(),
 	End=exons.end() ; cur!=End ; ++cur) {
@@ -192,7 +206,6 @@ void Application::processSam(SamReader &sam,Vector<Variant> &variants,
 			     int geneEnd,const String &substrate)
 {
   static SamRecord *buffer=NULL;
-  int kept=0;
   while(true) {
     SamRecord *rec;
     if(buffer) { rec=buffer; buffer=NULL; }
@@ -207,9 +220,7 @@ void Application::processSam(SamReader &sam,Vector<Variant> &variants,
     if(rec->getRefPos()>geneEnd) { buffer=rec; break;}
     addEdges(rec,variants);
     delete rec;
-    ++kept;
   }
-  cout<<"KEPT READS: "<<kept<<endl;
 }
 
 
@@ -224,12 +235,7 @@ void Application::processExons(Vector<GffFeature*> &exons,
   substrate=exon.getSubstrate();
   substrate=chrRegex.substitute(substrate,"");
   getIntervals(exons,intervals);
-  //cout<<"SUBSTRATE: "<<substrate<<endl;
-  /*for(Vector<Interval>::iterator cur=intervals.begin(), 
-	end=intervals.end() ; cur!=end ; ++cur)
-	cout<<*cur<<endl;*/
   getVariants(substrate,intervals,variants);
-  //cout<<"VARIANTS:"<<endl;
   for(Vector<Variant>::iterator cur=variants.begin(), end=variants.end() ;
       cur!=end ; ++cur) {
     Variant v=*cur;
@@ -301,7 +307,7 @@ bool Application::parseVariant(const String &line,String &ID,int &pos,
     return false;
   String sGenotype=fields[9];
 
-  // ### This is not fully generic:
+  // ### This is not fully generic, could be improved:
   if(sGenotype=="0|1") { genotype[0]=0; genotype[1]=1; }
   else if(sGenotype=="1|0") { genotype[0]=1; genotype[1]=0; }
   else return false;
@@ -344,40 +350,78 @@ void Application::addEdges(const SamRecord *read,
 {
   const CigarString &cigar=read->getCigar();
   CigarAlignment &alignment=*cigar.getAlignment();
-  const int L=alignment.length();
-  int firstRefPos=alignment[0], lastRefPos=alignment[L-1]; // ### wrong
-  const int offset=read->getRefPos();
-  Interval refInterval(offset+firstRefPos,offset+lastRefPos+1);
-  bool containsVariant=false;
-  for(Vector<Variant>::iterator cur=graph.begin(), end=graph.end() ; 
-      cur!=end ; ++cur) {
-    if(refInterval.contains((*cur).pos)) { containsVariant=true; break; }
-  }
-  if(containsVariant) {
-    CigarAlignment &inverse=*alignment.invert(lastRefPos-firstRefPos+1);
-    for(Vector<Variant>::iterator cur=graph.begin(), end=graph.end() ; 
-	cur!=end ; ++cur) {
-      Variant &v=*cur;
-      if(refInterval.contains(v.pos)) { 
-	const int readPos=inverse[v.pos-offset];
-	cout<<read->getID()<<" CONTAINS VARIANT AT POS "<<readPos<<endl;
-	if(readPos<0) cout<<"\tUNMAPPED"<<endl;
-	else {
-	  const String &seq=read->getSequence();
-	  if(readPos>seq.length()) {
-	    cout<<"COORD ERROR: "<<readPos<<">"<<seq.length()<<endl;
-	    throw "COORD ERROR";
-	  }
-	  cout<<"\t"<<v.ID<<" ALLELE IN READ: "<<seq[readPos]
-	      <<" REV="<<read->flag_revComp()<<endl;
-	}
-      }
-    }
-    delete &inverse;
-  }
+  const int numNodes=graph.size();
+  Vector<VariantInRead> variantsInRead;
+  findVariantsInRead(graph,read,alignment,variantsInRead);
+  if(variantsInRead.size()>1) cout<<"FOUND "<<variantsInRead.size()<<" VARIANTS IN READ"<<endl;
+  installEdges(variantsInRead);
 
-    // ### Have to adress soft masks in CigarAlignment (not implemented)
-
+  // ### Have to adress soft masks in CigarAlignment (not implemented)
   delete &alignment;
 }
+
+
+
+void Application::findVariantsInRead(Vector<Variant> &graph,
+				     const SamRecord *read,
+				     CigarAlignment &alignment,
+				     Vector<VariantInRead> &variants)
+{
+  const int L=alignment.length();
+  const int offset=read->getRefPos();
+  const String &seq=read->getSequence();
+  for(int readPos=0 ; readPos<L ; ++readPos) {
+    const int refPos=alignment[readPos]+offset;
+    if(refPos==CIGAR_UNDEFINED) continue;
+    for(Vector<Variant>::iterator cur=graph.begin(), end=graph.end() ;
+	cur!=end ; ++cur) {
+      Variant &v=*cur;
+      if(v.pos==refPos) {
+	const char c=seq[readPos];
+	SNP_ALLELE allele;
+	if(c==v.ref) allele=REF;
+	else if(c==v.alt) allele=ALT;
+	else {
+	  cout<<read->getID()<<" ALLELE MISMATCH "<<c<<" NOT "<<v.ref
+	      <<" NOR "<<v.alt<<" VAR="<<v.ID<<" READ POS="<<readPos<<endl;
+	  continue;
+	}
+	variants.push_back(VariantInRead(v,readPos,allele));
+      }
+    }
+  }
+}
+
+
+
+void Application::installEdges(Vector<VariantInRead> &variants)
+{
+  const int N=variants.size();
+  for(int i=0 ; i<N-1 ; ++i) {
+    VariantInRead &thisVar=variants[i], &nextVar=variants[i+1];
+    ++thisVar.v.edges[thisVar.allele][nextVar.allele];
+  }
+}
+
+
+
+void Application::processGraph(Vector<Variant> &G)
+{
+  const int N=G.size();
+  int totalEdges=0;
+  for (int i=0 ; i<N ; ++i) {
+    const Variant &v=G[i];
+    for(int j=0 ; j<2 ; ++j)
+      for(int k=0 ; k<2 ; ++k)
+	totalEdges+=v.edges[j][k];
+  }
+  if(totalEdges<1) return;
+
+  cout<<"GRAPH:"<<endl;
+  for (int i=0 ; i<N ; ++i) {
+    const Variant &v=G[i];
+    cout<<"\t"<<v.ID<<"\t"<<v.edges<<endl;
+  }
+}
+
 

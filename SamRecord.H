@@ -8,7 +8,7 @@
 #define INCL_SamRecord_H
 #include <iostream>
 #include "BOOM/String.H"
-#include "BOOM/CigarString.H"
+#include "BOOM/SamCigarString.H"
 using namespace std;
 using namespace BOOM;
 
@@ -18,7 +18,7 @@ public:
   SamRecord(const String &ID,const String &refName,int refPos,String cigar,
 	    String seq,unsigned int flags,const Vector<String> &tags);
   const String &getID() const;
-  const CigarString &getCigar() const;
+  const SamCigarString &getCigar() const;
   const String &getSequence() const;
   const String &getRefName() const;
   int getRefPos() const;
@@ -41,7 +41,7 @@ private:
   String ID;
   String refName; // name of reference sequence the read aligns to
   int refPos; // position in reference where alignment begins
-  CigarString CIGAR; // CigarString
+  SamCigarString CIGAR; // CigarString
   String seq; // read sequence
   unsigned int flags; // bitfield
   Vector<String> tags; // array of tags at end of record (MD:Z:122G25, NM:i:1, etc.)
