@@ -48,6 +48,7 @@ class Application {
   Regex pseudogeneRegex;
   Regex chrRegex;
   String vcfFile;
+  int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
   void processExons(Vector<GffFeature*> &exons,
 		    Vector<Interval> &intervals,Vector<Variant> &,
 		    String &substrate);
@@ -95,8 +96,8 @@ int main(int argc,char *argv[])
 
 
 Application::Application()
-  : pseudogeneRegex("pseudogene"),
-    chrRegex("chr")
+  : pseudogeneRegex("pseudogene"), chrRegex("chr"),
+    readsSeen(0), readsDiscarded(0), readsUnmapped(0), readsWrongChrom(0)
 {
   // ctor
 }
@@ -117,11 +118,17 @@ int Application::main(int argc,char *argv[])
   GffReader gff(gffFile);
   SamReader sam(samFile);
 
+  // Load GFF
+  cout<<"Loading GFF..."<<endl;
+  Vector<GffGene> *genes=gff.loadGenes();
+  cout<<"Done."<<endl;
+
   // Process the GFF file line-by-line
   String currentGene;
   GffFeature *buffer=NULL;
   Vector<GffFeature*> exons;
   String chrom;
+  int prevGeneBegin=-1, prevGeneEnd=-1;
   while(true) {
     GffFeature *feature;
     if(buffer) { feature=buffer; buffer=NULL; }
@@ -135,6 +142,12 @@ int Application::main(int argc,char *argv[])
 	Vector<Interval> exonIntervals;
 	int geneBegin, geneEnd;
 	getGeneLimits(exons,geneBegin,geneEnd);
+	//if(geneBegin<prevGeneEnd)
+	if(geneEnd<prevGeneBegin)
+	  throw RootException(String("GTF is not sorted: (")+prevGeneBegin+
+			      ","+prevGeneEnd+") overlaps ("+geneBegin+","+
+			      geneEnd+")");
+	prevGeneBegin=geneBegin; prevGeneEnd=geneEnd;
 	String substrate;
 	processExons(exons,exonIntervals,variants,substrate);
 	if(substrate!=chrom)
@@ -155,6 +168,7 @@ int Application::main(int argc,char *argv[])
       { delete feature; continue; }
     exons.push_back(feature);
   }
+  cout<<readsSeen<<" reads seen, "<<readsDiscarded<<" discarded"<<endl;
   return 0;
 }
 
@@ -209,14 +223,18 @@ void Application::processSam(SamReader &sam,Vector<Variant> &variants,
   while(true) {
     SamRecord *rec;
     if(buffer) { rec=buffer; buffer=NULL; }
-    else rec=sam.nextRecord();
+    else { rec=sam.nextRecord(); if(rec) ++readsSeen; }
     if(!rec) break;
-    if(rec->flag_unmapped()) { delete rec; continue; }
+    if(rec->flag_unmapped()) { delete rec; ++readsUnmapped; continue; }
     String readSubstrate=rec->getRefName();
     readSubstrate=chrRegex.substitute(readSubstrate,"");
-    if(readSubstrate<substrate) { delete rec; continue; } // ### ???
+    if(readSubstrate<substrate) 
+      { delete rec; ++readsWrongChrom; continue; } // ### ???
+
+    // This line is not quite correct:
     if(rec->getRefPos()+rec->getSequence().getLength()<geneBegin)
-      { delete rec; continue; }
+      { delete rec; ++readsDiscarded; continue; }
+
     if(rec->getRefPos()>geneEnd) { buffer=rec; break;}
     addEdges(rec,variants);
     delete rec;
@@ -409,7 +427,7 @@ void Application::processGraph(Vector<Variant> &G)
 {
   const int N=G.size();
   int totalEdges=0;
-  for (int i=0 ; i<N ; ++i) {
+  for (int i=0 ; i<N-1 ; ++i) {
     const Variant &v=G[i];
     for(int j=0 ; j<2 ; ++j)
       for(int k=0 ; k<2 ; ++k)
@@ -418,7 +436,7 @@ void Application::processGraph(Vector<Variant> &G)
   if(totalEdges<1) return;
 
   cout<<"GRAPH:"<<endl;
-  for (int i=0 ; i<N ; ++i) {
+  for (int i=0 ; i<N-1 ; ++i) {
     const Variant &v=G[i];
     cout<<"\t"<<v.ID<<"\t"<<v.edges<<endl;
   }
