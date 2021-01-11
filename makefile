@@ -26,6 +26,17 @@ phd: \
 		$(OBJ)/SamRecord.o \
 		$(OBJ)/phd.o \
 		$(LIBS)
+#---------------------------------------------------------
+$(OBJ)/sort-gff.o:\
+		sort-gff.C
+	$(CC) $(CFLAGS) -o $(OBJ)/sort-gff.o -c \
+		sort-gff.C
+#---------------------------------------------------------
+sort-gff: \
+		$(OBJ)/sort-gff.o
+	$(CC) $(LDFLAGS) -o sort-gff \
+		$(OBJ)/sort-gff.o \
+		$(LIBS)
 #--------------------------------------------------------
 $(OBJ)/SamReader.o:\
 		SamReader.C\

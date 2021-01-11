@@ -9,12 +9,20 @@
 using namespace std;
 using namespace BOOM;
 
-SamRecord::SamRecord(const String &ID,const String &refName,int refPos,String cigar,
-	    String seq,unsigned int flags,const Vector<String> &tags)
+SamRecord::SamRecord(const String &ID,const String &refName,int refPos,
+		     String cigar,String seq,unsigned int flags,
+		     const Vector<String> &tags,const String &qual)
   : ID(ID), refName(refName), refPos(refPos), CIGAR(cigar), seq(seq),
-    flags(flags), tags(tags)
+    flags(flags), tags(tags), qual(qual)
 {
   // ctor
+}
+
+
+
+const String &SamRecord::getQualityScores() const
+{
+  return qual;
 }
 
 

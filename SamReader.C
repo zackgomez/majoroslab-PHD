@@ -56,7 +56,7 @@ SamRecord *SamReader::nextSeqAndText(String &line)
   if(fields.size()<11) 
     throw RootException("can't parse sam line: "+line);
   String ID=fields[0], flagStr=fields[1], refName=fields[2],
-    refPosStr=fields[3], cigar=fields[5], seq=fields[9];
+    refPosStr=fields[3], cigar=fields[5], seq=fields[9], qual=fields[10];
   if(cigar=="*") cigar="";
   //ID,flags,refName,refPos,mapQual,cigar,rnext,pnext,templateLen,seq,qual)=fields[:11]
   const int refPos=int(refPosStr)-1; // convert 1-based to 0-based
@@ -64,7 +64,7 @@ SamRecord *SamReader::nextSeqAndText(String &line)
   //const CigarString CIGAR=(cigar);
   Vector<String> tags;
   for(int i=11 ; i<fields.size() ; ++i) tags.push_back(fields[i]);
-  SamRecord *rec=new SamRecord(ID,refName,refPos,cigar,seq,flags,tags);
+  SamRecord *rec=new SamRecord(ID,refName,refPos,cigar,seq,flags,tags,qual);
   return rec;
 }
 

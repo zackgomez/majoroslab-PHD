@@ -19,6 +19,8 @@
 using namespace std;
 using namespace BOOM;
 
+const char *ILLUMINA="!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHI";
+
 enum SNP_ALLELE {
   REF=0,
   ALT=1
@@ -34,6 +36,8 @@ struct Variant {
   Variant(String ID,int pos,char ref,char alt,int g[2])
     : ID(ID), pos(pos), ref(ref), alt(alt), edges(2,2)
   { genotype[0]=g[0]; genotype[1]=g[1]; edges.setAllTo(0); }
+  bool concordant() const;
+  bool nonzero() const;
 };
 
 struct VariantInRead {
@@ -45,10 +49,13 @@ struct VariantInRead {
 };
 
 class Application {
+  char MIN_QUAL; // This is the encoding charater, NOT the integer value!
   Regex pseudogeneRegex;
   Regex chrRegex;
   String vcfFile;
   int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
+  int numConcordant, numNonzero;
+  void encodeMinQual(int);
   void processExons(Vector<GffFeature*> &exons,
 		    Vector<Interval> &intervals,Vector<Variant> &,
 		    String &substrate);
@@ -67,7 +74,7 @@ class Application {
   int getLastPos(const Vector<Interval> &exons);
   void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,int &end);
   void addEdges(const SamRecord *read,Vector<Variant> &graph);
-  void installEdges(Vector<VariantInRead> &);
+  void installEdges(Vector<VariantInRead> &,const String &readID);
   void findVariantsInRead(Vector<Variant> &,const SamRecord *,
 			  CigarAlignment &,Vector<VariantInRead> &);
   void processGraph(Vector<Variant> &);
@@ -95,9 +102,29 @@ int main(int argc,char *argv[])
 
 
 
+bool Variant::concordant() const
+{
+  const int diag1=edges[0][0]+edges[1][1], diag2=edges[0][1]+edges[1][0];
+  return diag1==0 || diag2==0;
+}
+
+
+
+bool Variant::nonzero() const
+{
+  int sum=0;
+  for(int i=0 ; i<2 ; ++i)
+    for(int j=0 ; j<2 ; ++j)
+      sum+=edges[i][j];
+  return sum>0;
+}
+
+
+
 Application::Application()
   : pseudogeneRegex("pseudogene"), chrRegex("chr"),
-    readsSeen(0), readsDiscarded(0), readsUnmapped(0), readsWrongChrom(0)
+    readsSeen(0), readsDiscarded(0), readsUnmapped(0), readsWrongChrom(0),
+    numConcordant(0), numNonzero(0)
 {
   // ctor
 }
@@ -108,20 +135,22 @@ int Application::main(int argc,char *argv[])
 {
   // Process command line
   CommandLine cmd(argc,argv,"");
-  if(cmd.numArgs()!=3)
-    throw String("phd <indexed.vcf.gz> <sorted.gff> <in.sam>");
+  if(cmd.numArgs()!=4)
+    throw String("phd <indexed.vcf.gz> <sorted.gff> <in.sam> <min-qual>");
   vcfFile=cmd.arg(0);
   const String gffFile=cmd.arg(1);
   const String samFile=cmd.arg(2);
+  const int minQual=cmd.arg(3).asInt();
+  encodeMinQual(minQual);
 
   // Open input files
   GffReader gff(gffFile);
   SamReader sam(samFile);
 
   // Load GFF
-  cout<<"Loading GFF..."<<endl;
-  Vector<GffGene> *genes=gff.loadGenes();
-  cout<<"Done."<<endl;
+  //cout<<"Loading GFF..."<<endl;
+  //Vector<GffGene> *genes=gff.loadGenes();
+  //cout<<"Done."<<endl;
 
   // Process the GFF file line-by-line
   String currentGene;
@@ -161,15 +190,27 @@ int Application::main(int argc,char *argv[])
       }
     }
     currentGene=feature->lookupExtra("gene_id");
-    if(feature->getFeatureType()!="exon" ||
+    /*if(feature->getFeatureType()!="exon" ||
        pseudogeneRegex.search(feature->lookupExtra("gene_type")) ||
-       feature->lookupExtra("level")!="1")
+       feature->lookupExtra("level")!="1")*/
+    if(feature->getFeatureType()!="exon" ||
+       pseudogeneRegex.search(feature->lookupExtra("gene_type")))
       //feature->lookupExtra("transcript_support_level")!="1")
       { delete feature; continue; }
     exons.push_back(feature);
   }
   cout<<readsSeen<<" reads seen, "<<readsDiscarded<<" discarded"<<endl;
+  cout<<numConcordant<<" concordant edges out of "<<numNonzero<<" nonzero"
+      <<endl;
   return 0;
+}
+
+
+
+void Application::encodeMinQual(int q)
+{
+  if(q>40) throw "Minimum quality score cannot be greater than 40";
+  MIN_QUAL=ILLUMINA[q];
 }
 
 
@@ -372,7 +413,7 @@ void Application::addEdges(const SamRecord *read,
   Vector<VariantInRead> variantsInRead;
   findVariantsInRead(graph,read,alignment,variantsInRead);
   if(variantsInRead.size()>1) cout<<"FOUND "<<variantsInRead.size()<<" VARIANTS IN READ"<<endl;
-  installEdges(variantsInRead);
+  installEdges(variantsInRead,read->getID());
 
   // ### Have to adress soft masks in CigarAlignment (not implemented)
   delete &alignment;
@@ -388,6 +429,7 @@ void Application::findVariantsInRead(Vector<Variant> &graph,
   const int L=alignment.length();
   const int offset=read->getRefPos();
   const String &seq=read->getSequence();
+  const String &qual=read->getQualityScores();
   for(int readPos=0 ; readPos<L ; ++readPos) {
     const int refPos=alignment[readPos]+offset;
     if(refPos==CIGAR_UNDEFINED) continue;
@@ -395,6 +437,7 @@ void Application::findVariantsInRead(Vector<Variant> &graph,
 	cur!=end ; ++cur) {
       Variant &v=*cur;
       if(v.pos==refPos) {
+	if(qual[readPos]<MIN_QUAL) continue;
 	const char c=seq[readPos];
 	SNP_ALLELE allele;
 	if(c==v.ref) allele=REF;
@@ -412,12 +455,18 @@ void Application::findVariantsInRead(Vector<Variant> &graph,
 
 
 
-void Application::installEdges(Vector<VariantInRead> &variants)
+void Application::installEdges(Vector<VariantInRead> &variants,
+			       const String &readID)
 {
   const int N=variants.size();
   for(int i=0 ; i<N-1 ; ++i) {
     VariantInRead &thisVar=variants[i], &nextVar=variants[i+1];
     ++thisVar.v.edges[thisVar.allele][nextVar.allele];
+    //if(thisVar.v.ID=="rs571837891" && thisVar.allele==ALT)
+    //  cout<<"XXX\t"<<readID<<endl;
+    if(thisVar.v.ID=="rs571837891")
+      cout<<"XXX\t"<<readID<<"\t"<<thisVar.allele<<"\t"<<nextVar.allele
+	  <<endl;
   }
 }
 
@@ -430,8 +479,10 @@ void Application::processGraph(Vector<Variant> &G)
   for (int i=0 ; i<N-1 ; ++i) {
     const Variant &v=G[i];
     for(int j=0 ; j<2 ; ++j)
-      for(int k=0 ; k<2 ; ++k)
+      for(int k=0 ; k<2 ; ++k) 
 	totalEdges+=v.edges[j][k];
+    if(v.nonzero()>0) ++numNonzero;
+    if(v.concordant()) ++numConcordant;
   }
   if(totalEdges<1) return;
 

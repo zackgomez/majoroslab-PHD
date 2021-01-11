@@ -16,10 +16,12 @@ using namespace BOOM;
 class SamRecord {
 public:
   SamRecord(const String &ID,const String &refName,int refPos,String cigar,
-	    String seq,unsigned int flags,const Vector<String> &tags);
+	    String seq,unsigned int flags,const Vector<String> &tags,
+	    const String &qual);
   const String &getID() const;
   const SamCigarString &getCigar() const;
   const String &getSequence() const;
+  const String &getQualityScores() const;
   const String &getRefName() const;
   int getRefPos() const;
   const Vector<String> &getTags() const;
@@ -43,6 +45,7 @@ private:
   int refPos; // position in reference where alignment begins
   SamCigarString CIGAR; // CigarString
   String seq; // read sequence
+  String qual; // quality score encoding
   unsigned int flags; // bitfield
   Vector<String> tags; // array of tags at end of record (MD:Z:122G25, NM:i:1, etc.)
 };
