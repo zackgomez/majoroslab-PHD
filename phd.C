@@ -150,7 +150,7 @@ float Variant::logLikInPhase(const IlluminaQual &Q)
 {
   const float logLik=logProd(0,0,Q)+logProd(1,1,Q)+
     logProdSwapped(0,1,Q)+logProdSwapped(1,0,Q);
-  //cout<<"  LOG LIK IN PHASE = "<<logLik<<endl;
+  cout<<"  LOG LIK IN PHASE = "<<logLik<<endl;
   return logLik;
 }
 
@@ -160,7 +160,7 @@ float Variant::logLikAntiPhased(const IlluminaQual &Q)
 {
   const float logLik=logProd(0,1,Q)+logProd(1,0,Q)+
     logProdSwapped(0,0,Q)+logProdSwapped(1,1,Q);
-  //cout<<"  LOG LIK ANTI-PHASED = "<<logLik<<endl;
+  cout<<"  LOG LIK ANTI-PHASED = "<<logLik<<endl;
   return logLik;
 }
 
@@ -176,7 +176,7 @@ float Variant::logProd(int i,int j,const IlluminaQual &illumina)
     sum+=log(p.first*p.second+(1-p.first)*(1-p.second));
     cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
   }
-  //cout<<"\t\tLOGPROD="<<sum<<endl;
+  cout<<"\t\tLOGPROD="<<sum<<endl;
   return sum;
 }
 
@@ -192,7 +192,7 @@ float Variant::logProdSwapped(int i,int j,const IlluminaQual &illumina)
     sum+=log(p.first*(1-p.second)+(1-p.first)*p.second);
     //cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
   }
-  //cout<<"\t\tLOGPROD SWAPPED="<<sum<<endl;
+  cout<<"\t\tLOGPROD SWAPPED="<<sum<<endl;
   return sum;
 }
 
@@ -367,8 +367,8 @@ void Application::processExons(Vector<GffFeature*> &exons,
   for(Vector<Variant>::iterator cur=variants.begin(), end=variants.end() ;
       cur!=end ; ++cur) {
     Variant v=*cur;
-    cout<<v.ID<<"\t"<<v.pos<<"\t"<<v.ref<<"\t"<<v.alt<<"\t"
-	<<v.genotype[0]<<"|"<<v.genotype[1]<<endl;
+    //cout<<v.ID<<"\t"<<v.pos<<"\t"<<v.ref<<"\t"<<v.alt<<"\t"
+    //	<<v.genotype[0]<<"|"<<v.genotype[1]<<endl;
   }
 }
 
@@ -567,12 +567,13 @@ void Application::processGraph(Vector<Variant> &G)
 
   for (int i=0 ; i<N-1 ; ++i) {
     const Variant &v=G[i];
-    //if(v.concordant() || !v.nonzero()) continue;
-    if(!v.nonzero()) continue;
+    if(v.concordant() || !v.nonzero()) continue;
+    //if(!v.nonzero()) continue;
     cout<<"GRAPH:"<<endl;
     cout<<v.ID<<"\t"<<v.edges<<endl;
     const float prob=v.probInPhase(illumina);
     cout<<"IN-PHASE: "<<prob<<"  ANTI-PHASED: "<<1-prob<<endl;
+    if(prob<0.8 && 1-prob<0.8) throw String(v.ID)+" UNRESOLVED";
   }
 }
 
