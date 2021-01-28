@@ -18,6 +18,7 @@ $(OBJ)/phd.o:\
 		phd.C
 #---------------------------------------------------------
 phd: \
+		$(OBJ)/ReadVariants.o \
 		$(OBJ)/SamReader.o \
 		$(OBJ)/SamRecord.o \
 		$(OBJ)/Variant.o \
@@ -25,6 +26,7 @@ phd: \
 		$(OBJ)/VariantInRead.o \
 		$(OBJ)/phd.o
 	$(CC) $(LDFLAGS) -o phd \
+		$(OBJ)/ReadVariants.o \
 		$(OBJ)/SamReader.o \
 		$(OBJ)/SamRecord.o \
 		$(OBJ)/Variant.o \
@@ -79,4 +81,12 @@ $(OBJ)/VariantInRead.o:\
 		VariantInRead.H
 	$(CC) $(CFLAGS) -o $(OBJ)/VariantInRead.o -c \
 		VariantInRead.C
+#---------------------------------------------------------
+
+#--------------------------------------------------------
+$(OBJ)/ReadVariants.o:\
+		ReadVariants.C\
+		ReadVariants.H
+	$(CC) $(CFLAGS) -o $(OBJ)/ReadVariants.o -c \
+		ReadVariants.C
 #---------------------------------------------------------

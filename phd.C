@@ -51,10 +51,10 @@ class Application {
   int getLastPos(const Vector<Interval> &exons);
   void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,int &end);
   void addEdges(const SamRecord *read,VariantGraph &graph);
-  void installEdges(Vector<VariantInRead> &,const String &readID,
-		    const String &qualities);
+  void installEdges(ReadVariants &,const String &readID,
+		    const String &qualities,VariantGraph &);
   void findVariantsInRead(VariantGraph &,const SamRecord *,
-			  CigarAlignment &,Vector<VariantInRead> &);
+			  CigarAlignment &,ReadVariants &);
   void processGraph(VariantGraph &);
 public:
   Application();
@@ -364,12 +364,9 @@ void Application::addEdges(const SamRecord *read,
   const CigarString &cigar=read->getCigar();
   CigarAlignment &alignment=*cigar.getAlignment();
   const int numNodes=graph.size();
-  Vector<VariantInRead> variantsInRead;
-  findVariantsInRead(graph,read,alignment,variantsInRead);
-  //if(variantsInRead.size()>1) cout<<"FOUND "<<variantsInRead.size()<<" VARIANTS IN READ"<<endl;
-  installEdges(variantsInRead,read->getID(),read->getQualityScores());
-
-  // ### Have to adress soft masks in CigarAlignment (not implemented)
+  ReadVariants readVariants;
+  findVariantsInRead(graph,read,alignment,readVariants);
+  installEdges(readVariants,read->getID(),read->getQualityScores(),graph);
   delete &alignment;
 }
 
@@ -378,7 +375,7 @@ void Application::addEdges(const SamRecord *read,
 void Application::findVariantsInRead(VariantGraph &graph,
 				     const SamRecord *read,
 				     CigarAlignment &alignment,
-				     Vector<VariantInRead> &variants)
+				     ReadVariants &variants)
 {
   const int L=alignment.length();
   const int offset=read->getRefPos();
@@ -391,7 +388,6 @@ void Application::findVariantsInRead(VariantGraph &graph,
 	cur!=end ; ++cur) {
       Variant &v=*cur;
       if(v.getPos()==refPos) {
-	//	const int q=int(qual[readPos]);
 	if(qual[readPos]<MIN_QUAL) continue;
 	const char c=seq[readPos];
 	SNP_ALLELE allele;
@@ -406,8 +402,6 @@ void Application::findVariantsInRead(VariantGraph &graph,
 	      <<" READ POS="<<readPos<<endl;
 	  continue;
 	}
-	//cout<<"NOMISMATCH\t"<<illumina.charToErrorProb(qual[readPos])
-	//    <<endl;
 	variants.push_back(VariantInRead(v,readPos,allele));
       }
     }
@@ -416,10 +410,10 @@ void Application::findVariantsInRead(VariantGraph &graph,
 
 
 
-void Application::installEdges(Vector<VariantInRead> &variants,
-			       const String &readID,
-			       const String &qualities)
+void Application::installEdges(ReadVariants &variants,const String &readID,
+			       const String &qualities,VariantGraph &G)
 {
+  G.addRead(variants);
   const int N=variants.size();
   for(int i=0 ; i<N-1 ; ++i) {
     VariantInRead &thisVar=variants[i], &nextVar=variants[i+1];
@@ -453,16 +447,36 @@ void Application::processGraph(VariantGraph &G)
   }
   if(totalEdges<1) return;
 
-  for (int i=0 ; i<N-1 ; ++i) {
+  /*  for (int i=0 ; i<N-1 ; ++i) {
     const Variant &v=G[i];
     if(v.concordant() || !v.nonzero()) continue;
-    //if(!v.nonzero()) continue;
     cout<<"GRAPH:"<<endl;
     cout<<v.getID()<<"\t"<<v.getEdges()<<endl;
     const float prob=v.probInPhase(illumina);
     cout<<"IN-PHASE: "<<prob<<"  ANTI-PHASED: "<<1-prob<<endl;
     if(prob<MIN_PROB_CORRECT && 1-prob<MIN_PROB_CORRECT) 
       throw String(v.getID())+" UNRESOLVED";
+      } */
+
+  // Get the connected components
+  G.phase(illumina,MIN_PROB_CORRECT);
+  Vector<VariantGraph> components;
+  G.getComponents(components,illumina,MIN_PROB_CORRECT);
+  for(int i=0 ; i<components.size() ; ++i) {
+    cout<<"Component "<<(i+1)<<": ";
+    VariantGraph &c=components[i];
+    for(int i=0 ; i<c.size() ; ++i) {
+      cout<<c[i].getID();
+      if(i+1<c.size())
+	switch(c[i].getPhase()) {
+	case UNPHASED: throw "unphased link in graph!";
+	case IN_PHASE: cout<<"-"; break;
+	case ANTI_PHASED: cout<<"\\"; break;
+	default: 
+	  throw String("unknown VariantPhase value ")+c[i].getPhase();
+	}
+    }
+    cout<<endl;
   }
 }
 

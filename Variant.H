@@ -14,16 +14,22 @@
 using namespace std;
 using namespace BOOM;
 
+enum VariantPhase {
+  UNPHASED,
+  IN_PHASE,   // this var is in phase with next var (ref-ref, alt-alt)
+  ANTI_PHASED // this var is anti-phased with next var (ref-alt, alt-ref)
+};
+
 class Variant {
 public:
   Variant();
-  Variant(String ID,int pos,char ref,char alt,int g[2])
-    : ID(ID), pos(pos), ref(ref), alt(alt), edges(2,2),
-      probCorrect(2,2)
-  { genotype[0]=g[0]; genotype[1]=g[1]; edges.setAllTo(0); }
+  Variant(String ID,int pos,char ref,char alt,int g[2]);
   bool concordant() const;
   bool nonzero() const;
-  float probInPhase(IlluminaQual &);
+  float probInPhase(const IlluminaQual &);
+  void setPhase(const IlluminaQual &Q,float confidence);
+  bool isPhased() { return phase!=UNPHASED; }
+  VariantPhase getPhase() { return phase; }
   const String &getID() { return ID; }
   int getPos() { return pos; }
   char getRef() { return ref; }
@@ -37,6 +43,7 @@ protected:
   int pos;
   char ref, alt;
   int genotype[2];
+  VariantPhase phase;
   Array2D<Vector<pair<float,float> > > probCorrect; // P(base is correct)
   Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
   float logLikInPhase(const IlluminaQual &);

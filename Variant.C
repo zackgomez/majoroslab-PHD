@@ -12,8 +12,20 @@ using namespace std;
 using namespace BOOM;
 
 Variant::Variant()
+  : phase(UNPHASED)
 {
   // ctor
+}
+
+
+
+Variant::Variant(String ID,int pos,char ref,char alt,int g[2])
+  : ID(ID), pos(pos), ref(ref), alt(alt), edges(2,2),
+    probCorrect(2,2), phase(UNPHASED)
+{ 
+  genotype[0]=g[0]; 
+  genotype[1]=g[1]; 
+  edges.setAllTo(0); 
 }
 
 
@@ -39,7 +51,7 @@ bool Variant::nonzero() const
 
 // This function uses Bayes' Thm with a uniform prior to compute the
 // posterior probability of being in-phase rather than anti-phased
-float Variant::probInPhase(IlluminaQual &illumina)
+float Variant::probInPhase(const IlluminaQual &illumina)
 {
   const float lik1=logLikInPhase(illumina);
   const float lik2=logLikAntiPhased(illumina);
@@ -56,7 +68,7 @@ float Variant::logLikInPhase(const IlluminaQual &Q)
 {
   const float logLik=logProd(0,0,Q)+logProd(1,1,Q)+
     logProdSwapped(0,1,Q)+logProdSwapped(1,0,Q);
-  cout<<"  LOG LIK IN PHASE = "<<logLik<<endl;
+  //cout<<"  LOG LIK IN PHASE = "<<logLik<<endl;
   return logLik;
 }
 
@@ -66,7 +78,7 @@ float Variant::logLikAntiPhased(const IlluminaQual &Q)
 {
   const float logLik=logProd(0,1,Q)+logProd(1,0,Q)+
     logProdSwapped(0,0,Q)+logProdSwapped(1,1,Q);
-  cout<<"  LOG LIK ANTI-PHASED = "<<logLik<<endl;
+  //cout<<"  LOG LIK ANTI-PHASED = "<<logLik<<endl;
   return logLik;
 }
 
@@ -80,9 +92,9 @@ float Variant::logProd(int i,int j,const IlluminaQual &illumina)
 	end=pairs.end() ; cur!=end ; ++cur) {
     const pair<float,float> &p=*cur;
     sum+=log(p.first*p.second+(1-p.first)*(1-p.second));
-    cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
+    //cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
   }
-  cout<<"\t\tLOGPROD="<<sum<<endl;
+  //cout<<"\t\tLOGPROD="<<sum<<endl;
   return sum;
 }
 
@@ -98,8 +110,16 @@ float Variant::logProdSwapped(int i,int j,const IlluminaQual &illumina)
     sum+=log(p.first*(1-p.second)+(1-p.first)*p.second);
     //cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
   }
-  cout<<"\t\tLOGPROD SWAPPED="<<sum<<endl;
+  //cout<<"\t\tLOGPROD SWAPPED="<<sum<<endl;
   return sum;
 }
 
 
+
+void Variant::setPhase(const IlluminaQual &Q,float confidence)
+{
+  const float P=probInPhase(Q);
+  if(P>=confidence) phase=IN_PHASE;
+  else if(1-P>=confidence) phase=ANTI_PHASED;
+  else phase=UNPHASED;
+}

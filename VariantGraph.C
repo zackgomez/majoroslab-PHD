@@ -22,8 +22,29 @@ Vector<Variant> &VariantGraph::getVariants()
 
 
 
-void getComponents(Vector<VariantGraph> &into)
+void VariantGraph::getComponents(Vector<VariantGraph> &into,
+				 const IlluminaQual &Q,float confidence)
 {
+  VariantGraph comp;
+  const int numVariants=size();
+  for(int i=0 ; i<numVariants ; ++i) {
+    Variant &v=variants[i];
+    comp.push_back(v);
+    if(!v.isPhased()) {
+      into.push_back(comp);
+      comp.clear();
+    }
+  }
+  if(comp.size()>0) into.push_back(comp);
 }
 
 
+
+void VariantGraph::phase(const IlluminaQual &Q,float minQual)
+{
+  for(Vector<Variant>::iterator cur=begin(), end=this->end() ; cur!=end ; 
+      ++cur) {
+    Variant &v=*cur;
+    if(v.nonzero()) v.setPhase(Q,minQual);
+  }
+}
