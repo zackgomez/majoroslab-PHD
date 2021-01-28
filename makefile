@@ -20,10 +20,16 @@ $(OBJ)/phd.o:\
 phd: \
 		$(OBJ)/SamReader.o \
 		$(OBJ)/SamRecord.o \
+		$(OBJ)/Variant.o \
+		$(OBJ)/VariantGraph.o \
+		$(OBJ)/VariantInRead.o \
 		$(OBJ)/phd.o
 	$(CC) $(LDFLAGS) -o phd \
 		$(OBJ)/SamReader.o \
 		$(OBJ)/SamRecord.o \
+		$(OBJ)/Variant.o \
+		$(OBJ)/VariantGraph.o \
+		$(OBJ)/VariantInRead.o \
 		$(OBJ)/phd.o \
 		$(LIBS)
 #---------------------------------------------------------
@@ -49,4 +55,28 @@ $(OBJ)/SamRecord.o:\
 		SamRecord.H
 	$(CC) $(CFLAGS) -o $(OBJ)/SamRecord.o -c \
 		SamRecord.C
+#---------------------------------------------------------
+
+#--------------------------------------------------------
+$(OBJ)/Variant.o:\
+		Variant.C\
+		Variant.H
+	$(CC) $(CFLAGS) -o $(OBJ)/Variant.o -c \
+		Variant.C
+#---------------------------------------------------------
+
+#--------------------------------------------------------
+$(OBJ)/VariantGraph.o:\
+		VariantGraph.C\
+		VariantGraph.H
+	$(CC) $(CFLAGS) -o $(OBJ)/VariantGraph.o -c \
+		VariantGraph.C
+#---------------------------------------------------------
+
+#--------------------------------------------------------
+$(OBJ)/VariantInRead.o:\
+		VariantInRead.C\
+		VariantInRead.H
+	$(CC) $(CFLAGS) -o $(OBJ)/VariantInRead.o -c \
+		VariantInRead.C
 #---------------------------------------------------------

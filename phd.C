@@ -19,43 +19,12 @@
 #include "BOOM/IlluminaQual.H"
 #include "BOOM/SumLogProbs.H"
 #include "SamReader.H"
+#include "VariantGraph.H"
+#include "VariantInRead.H"
 using namespace std;
 using namespace BOOM;
 
-enum SNP_ALLELE {
-  REF=0,
-  ALT=1
-};
-
-struct Variant {
-  String ID;
-  int pos;
-  char ref, alt;
-  int genotype[2];
-  Array2D<Vector<pair<float,float> > > probCorrect; // P(base is correct)
-  Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
-  Variant() {}
-  Variant(String ID,int pos,char ref,char alt,int g[2])
-    : ID(ID), pos(pos), ref(ref), alt(alt), edges(2,2),
-      probCorrect(2,2)
-  { genotype[0]=g[0]; genotype[1]=g[1]; edges.setAllTo(0); }
-  bool concordant() const;
-  bool nonzero() const;
-  float probInPhase(IlluminaQual &);
-protected:
-  float logLikInPhase(const IlluminaQual &);
-  float logLikAntiPhased(const IlluminaQual &);
-  float logProd(int i,int j,const IlluminaQual &);
-  float logProdSwapped(int i,int j,const IlluminaQual &);
-};
-
-struct VariantInRead {
-  Variant &v;
-  int pos; // position in read
-  SNP_ALLELE allele;
-  VariantInRead(Variant &v,int pos,SNP_ALLELE a)
-    : v(v), pos(pos), allele(a) {}
-};
+const float MIN_PROB_CORRECT=0.8;
 
 class Application {
   IlluminaQual illumina;
@@ -66,28 +35,27 @@ class Application {
   int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
   int numConcordant, numNonzero;
   void processExons(Vector<GffFeature*> &exons,
-		    Vector<Interval> &intervals,Vector<Variant> &,
+		    Vector<Interval> &intervals,VariantGraph &,
 		    String &substrate);
   void deleteExons(Vector<GffFeature*> &exons);
   void getIntervals(Vector<GffFeature*> &exons,Vector<Interval> &into);
   void getVariants(const String &substrate,
-		   const Vector<Interval> &intervals,
-		   Vector<Variant> &lines);
+		   const Vector<Interval> &intervals,VariantGraph &);
   bool parseVariant(const String &line,String &ID,int &pos,
 		    char &cRef,char &cAlt,int *genotype);
-  void filter(Vector<Variant> &,const Vector<Interval> &exons);
+  void filter(VariantGraph &,const Vector<Interval> &exons);
   bool find(const Variant &,const Vector<Interval> &exons);
-  void processSam(SamReader &,Vector<Variant> &,Vector<Interval> &exons,
+  void processSam(SamReader &,VariantGraph &,Vector<Interval> &exons,
 		  int geneBegin,int geneEnd,const String &substrate);
-  int getLastPos(const Vector<Variant> &);
+  int getLastPos(const VariantGraph &);
   int getLastPos(const Vector<Interval> &exons);
   void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,int &end);
-  void addEdges(const SamRecord *read,Vector<Variant> &graph);
+  void addEdges(const SamRecord *read,VariantGraph &graph);
   void installEdges(Vector<VariantInRead> &,const String &readID,
 		    const String &qualities);
-  void findVariantsInRead(Vector<Variant> &,const SamRecord *,
+  void findVariantsInRead(VariantGraph &,const SamRecord *,
 			  CigarAlignment &,Vector<VariantInRead> &);
-  void processGraph(Vector<Variant> &);
+  void processGraph(VariantGraph &);
 public:
   Application();
   int main(int argc,char *argv[]);
@@ -108,92 +76,6 @@ int main(int argc,char *argv[])
     {cerr << "STL exception caught in main:\n" << e.what() << endl;}
   catch(...) { cerr << "Unknown exception caught in main" << endl; }
   return -1;
-}
-
-
-
-bool Variant::concordant() const
-{
-  const int diag1=edges[0][0]+edges[1][1], diag2=edges[0][1]+edges[1][0];
-  return diag1==0 && diag2>0 || diag1>0 && diag2==0;
-}
-
-
-
-bool Variant::nonzero() const
-{
-  int sum=0;
-  for(int i=0 ; i<2 ; ++i)
-    for(int j=0 ; j<2 ; ++j)
-      if(edges[i][j]>0) return true;
-  return false;
-}
-
-
-
-// This function uses Bayes' Thm with a uniform prior to compute the
-// posterior probability of being in-phase rather than anti-phased
-float Variant::probInPhase(IlluminaQual &illumina)
-{
-  const float lik1=logLikInPhase(illumina);
-  const float lik2=logLikAntiPhased(illumina);
-  const float prior1=log(1), prior2=log(1); // uniform prior (for now)
-  const float likPrior1=lik1+prior1;
-  const float likPrior2=lik2+prior2;
-  const float posterior=exp(likPrior1-sumLogProbs(likPrior1,likPrior2));
-  return posterior;
-}
-
-
-
-float Variant::logLikInPhase(const IlluminaQual &Q)
-{
-  const float logLik=logProd(0,0,Q)+logProd(1,1,Q)+
-    logProdSwapped(0,1,Q)+logProdSwapped(1,0,Q);
-  cout<<"  LOG LIK IN PHASE = "<<logLik<<endl;
-  return logLik;
-}
-
-
-
-float Variant::logLikAntiPhased(const IlluminaQual &Q)
-{
-  const float logLik=logProd(0,1,Q)+logProd(1,0,Q)+
-    logProdSwapped(0,0,Q)+logProdSwapped(1,1,Q);
-  cout<<"  LOG LIK ANTI-PHASED = "<<logLik<<endl;
-  return logLik;
-}
-
-
-
-float Variant::logProd(int i,int j,const IlluminaQual &illumina)
-{
-  float sum=0;
-  const Vector<pair<float,float> > &pairs=probCorrect[i][j];
-  for(Vector<pair<float,float> >::const_iterator cur=pairs.begin(), 
-	end=pairs.end() ; cur!=end ; ++cur) {
-    const pair<float,float> &p=*cur;
-    sum+=log(p.first*p.second+(1-p.first)*(1-p.second));
-    cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
-  }
-  cout<<"\t\tLOGPROD="<<sum<<endl;
-  return sum;
-}
-
-
-
-float Variant::logProdSwapped(int i,int j,const IlluminaQual &illumina)
-{
-  float sum=0;
-  const Vector<pair<float,float> > &pairs=probCorrect[i][j];
-  for(Vector<pair<float,float> >::const_iterator cur=pairs.begin(), 
-	end=pairs.end() ; cur!=end ; ++cur) {
-    const pair<float,float> &p=*cur;
-    sum+=log(p.first*(1-p.second)+(1-p.first)*p.second);
-    //cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
-  }
-  cout<<"\t\tLOGPROD SWAPPED="<<sum<<endl;
-  return sum;
 }
 
 
@@ -244,7 +126,7 @@ int Application::main(int argc,char *argv[])
       if(currentGene!="" && geneID!=currentGene) {
 	buffer=feature;
 	if(exons.size()==0) continue;
-	Vector<Variant> variants;
+	VariantGraph variants;
 	Vector<Interval> exonIntervals;
 	int geneBegin, geneEnd;
 	getGeneLimits(exons,geneBegin,geneEnd);
@@ -300,13 +182,14 @@ void Application::getGeneLimits(const Vector<GffFeature*> &exons,
 
 
 
-int Application::getLastPos(const Vector<Variant> &variants)
+int Application::getLastPos(const VariantGraph &graph)
 {
   int pos=-1;
+  Vector<Variant> &variants=graph.getVariants();
   for(Vector<Variant>::const_iterator cur=variants.begin(), end=
 	variants.end() ; cur!=end ; ++cur) {
     const Variant &v=*cur;
-    if(v.pos>pos) pos=v.pos;
+    if(v.getPos()>pos) pos=v.getPos();
   }
   return pos;
 }
@@ -325,7 +208,7 @@ int Application::getLastPos(const Vector<Interval> &exons)
 }
 
 
-void Application::processSam(SamReader &sam,Vector<Variant> &variants,
+void Application::processSam(SamReader &sam,VariantGraph &graph,
 			     Vector<Interval> &exons,int geneBegin,
 			     int geneEnd,const String &substrate)
 {
@@ -346,7 +229,7 @@ void Application::processSam(SamReader &sam,Vector<Variant> &variants,
       { delete rec; ++readsDiscarded; continue; }
 
     if(rec->getRefPos()>geneEnd) { buffer=rec; break;}
-    addEdges(rec,variants);
+    addEdges(rec,graph);
     delete rec;
   }
 }
@@ -355,7 +238,7 @@ void Application::processSam(SamReader &sam,Vector<Variant> &variants,
 
 void Application::processExons(Vector<GffFeature*> &exons,
 			       Vector<Interval> &intervals,
-			       Vector<Variant> &variants,
+			       VariantGraph &graph,
 			       String &substrate)
 {
   if(exons.size()==0) return;
@@ -363,13 +246,14 @@ void Application::processExons(Vector<GffFeature*> &exons,
   substrate=exon.getSubstrate();
   substrate=chrRegex.substitute(substrate,"");
   getIntervals(exons,intervals);
-  getVariants(substrate,intervals,variants);
+  getVariants(substrate,intervals,graph);
+  /*
   for(Vector<Variant>::iterator cur=variants.begin(), end=variants.end() ;
       cur!=end ; ++cur) {
     Variant v=*cur;
     //cout<<v.ID<<"\t"<<v.pos<<"\t"<<v.ref<<"\t"<<v.alt<<"\t"
     //	<<v.genotype[0]<<"|"<<v.genotype[1]<<endl;
-  }
+    }*/
 }
 
 
@@ -403,7 +287,7 @@ void Application::deleteExons(Vector<GffFeature*> &exons)
 
 void Application::getVariants(const String &substrate,
 			      const Vector<Interval> &intervals,
-			      Vector<Variant> &variants)
+			      VariantGraph &graph)
 {
   for(Vector<Interval>::const_iterator cur=intervals.begin(), 
 	end=intervals.end() ; cur!=end ; ++cur) {
@@ -417,11 +301,11 @@ void Application::getVariants(const String &substrate,
       String ID; int pos; char ref,alt; int genotype[2];
       if(!parseVariant(line,ID,pos,ref,alt,genotype)) continue;
       Variant v(ID,pos,ref,alt,genotype);
-      variants.push_back(v);
+      graph.getVariants().push_back(v);
     }
     pipe.close();
   }
-  filter(variants,intervals);
+  filter(graph,intervals);
 }
 
 
@@ -452,9 +336,10 @@ bool Application::parseVariant(const String &line,String &ID,int &pos,
 
 
 
-void Application::filter(Vector<Variant> &variants,
+void Application::filter(VariantGraph &graph,
 			 const Vector<Interval> &exons)
 {
+  Vector<Variant> &variants=graph.getVariants();
   int n=variants.size();
   for(int i=0 ; i<n ; ++i) {
     if(!find(variants[i],exons)) { variants.cut(i); --i; --n; }
@@ -467,14 +352,14 @@ bool Application::find(const Variant &v,const Vector<Interval> &exons)
 {
   for(Vector<Interval>::const_iterator cur=exons.begin(), end=exons.end();
       cur!=end ; ++cur)
-    if((*cur).contains(v.pos)) return true;
+    if((*cur).contains(v.getPos())) return true;
   return false;
 }
 
 
 
 void Application::addEdges(const SamRecord *read,
-			   Vector<Variant> &graph)
+			   VariantGraph &graph)
 {
   const CigarString &cigar=read->getCigar();
   CigarAlignment &alignment=*cigar.getAlignment();
@@ -490,7 +375,7 @@ void Application::addEdges(const SamRecord *read,
 
 
 
-void Application::findVariantsInRead(Vector<Variant> &graph,
+void Application::findVariantsInRead(VariantGraph &graph,
 				     const SamRecord *read,
 				     CigarAlignment &alignment,
 				     Vector<VariantInRead> &variants)
@@ -505,21 +390,24 @@ void Application::findVariantsInRead(Vector<Variant> &graph,
     for(Vector<Variant>::iterator cur=graph.begin(), end=graph.end() ;
 	cur!=end ; ++cur) {
       Variant &v=*cur;
-      if(v.pos==refPos) {
+      if(v.getPos()==refPos) {
 	//	const int q=int(qual[readPos]);
 	if(qual[readPos]<MIN_QUAL) continue;
 	const char c=seq[readPos];
 	SNP_ALLELE allele;
-	if(c==v.ref) allele=REF;
-	else if(c==v.alt) allele=ALT;
+	if(c==v.getRef()) allele=REF;
+	else if(c==v.getAlt()) allele=ALT;
 	else {
 	  const float pError=illumina.charToErrorProb(qual[readPos]);
 	  cout<<read->getID()<<" ALLELE MISMATCH P(error)="<<pError
 	      <<"="<<illumina.charToPhred(qual[readPos])<<"="
-	      <<qual[readPos]<<" "<<c<<" NOT "<<v.ref
-	      <<" NOR "<<v.alt<<" VAR="<<v.ID<<" READ POS="<<readPos<<endl;
+	      <<qual[readPos]<<" "<<c<<" NOT "<<v.getRef()
+	      <<" NOR "<<v.getAlt()<<" VAR="<<v.getID()
+	      <<" READ POS="<<readPos<<endl;
 	  continue;
 	}
+	//cout<<"NOMISMATCH\t"<<illumina.charToErrorProb(qual[readPos])
+	//    <<endl;
 	variants.push_back(VariantInRead(v,readPos,allele));
       }
     }
@@ -535,9 +423,9 @@ void Application::installEdges(Vector<VariantInRead> &variants,
   const int N=variants.size();
   for(int i=0 ; i<N-1 ; ++i) {
     VariantInRead &thisVar=variants[i], &nextVar=variants[i+1];
-    ++thisVar.v.edges[thisVar.allele][nextVar.allele];
+    ++thisVar.v.getEdges()[thisVar.allele][nextVar.allele];
     Vector<pair<float,float> > &cell=
-      thisVar.v.probCorrect[thisVar.allele][nextVar.allele];
+      thisVar.v.getProbCorrect()[thisVar.allele][nextVar.allele];
     const float p1=1-illumina.charToErrorProb(qualities[thisVar.pos]);
     const float p2=1-illumina.charToErrorProb(qualities[nextVar.pos]);
     if(!isFinite(p1) || !isFinite(p2))
@@ -551,7 +439,7 @@ void Application::installEdges(Vector<VariantInRead> &variants,
 
 
 
-void Application::processGraph(Vector<Variant> &G)
+void Application::processGraph(VariantGraph &G)
 {
   const int N=G.size();
   int totalEdges=0;
@@ -559,7 +447,7 @@ void Application::processGraph(Vector<Variant> &G)
     const Variant &v=G[i];
     for(int j=0 ; j<2 ; ++j)
       for(int k=0 ; k<2 ; ++k) 
-	totalEdges+=v.edges[j][k];
+	totalEdges+=v.getEdges()[j][k];
     if(v.nonzero()) ++numNonzero;
     if(v.concordant()) ++numConcordant;
   }
@@ -570,10 +458,11 @@ void Application::processGraph(Vector<Variant> &G)
     if(v.concordant() || !v.nonzero()) continue;
     //if(!v.nonzero()) continue;
     cout<<"GRAPH:"<<endl;
-    cout<<v.ID<<"\t"<<v.edges<<endl;
+    cout<<v.getID()<<"\t"<<v.getEdges()<<endl;
     const float prob=v.probInPhase(illumina);
     cout<<"IN-PHASE: "<<prob<<"  ANTI-PHASED: "<<1-prob<<endl;
-    if(prob<0.8 && 1-prob<0.8) throw String(v.ID)+" UNRESOLVED";
+    if(prob<MIN_PROB_CORRECT && 1-prob<MIN_PROB_CORRECT) 
+      throw String(v.getID())+" UNRESOLVED";
   }
 }
 
