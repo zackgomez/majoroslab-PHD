@@ -21,6 +21,7 @@ public:
   Vector<VariantInRead>::iterator end() { return variants.end(); }
   VariantInRead &operator[](int i) { return variants[i]; }
   Vector<VariantInRead> &getVariants();
+  bool consistentWithPhase();
 protedted:
   Vector<VariantInRead> variants; // The alleles in this read
 };

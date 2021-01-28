@@ -10,8 +10,8 @@ using namespace std;
 using namespace BOOM;
 
 
-VariantInRead::VariantInRead(Variant &v,int pos,SNP_ALLELE a)
-  : v(v), pos(pos), allele(a) 
+VariantInRead::VariantInRead(Variant &v,int pos,SNP_ALLELE a,float p)
+  : v(v), pos(pos), allele(a), probCorrect(p)
 {
   // ctor
 }

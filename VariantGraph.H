@@ -10,7 +10,7 @@
 #include "BOOM/Vector.H"
 #include "BOOM/IlluminaQual.H"
 #include "Variant.H"
-#include "ReadAlleles.H"
+#include "ReadVariants.H"
 using namespace std;
 using namespace BOOM;
 
@@ -27,10 +27,14 @@ public:
   Variant &operator[](int i) { return variants[i]; }
   Vector<Variant>::iterator begin() { return variants.begin(); }
   Vector<Variant>::iterator end() { return variants.end(); }
-  Vector<ReadAlleles> &getReads() { return reads; }
+  Vector<ReadVariants> &getReads() { return reads; }
+  void phaseComponents(Vector<VariantGraph> &components);
+  void assignReads(Vector<VariantGraph> &components);
 protected:
+  void phaseComponent(VariantGraph &component);
+  void assignReads(VariantGraph &component);
   Vector<Variant> variants;
-  Vector<ReadAlleles> reads;
+  Vector<ReadVariants> reads;
 };
 
 

@@ -15,6 +15,8 @@ Variant::Variant()
   : phase(UNPHASED)
 {
   // ctor
+
+  counts[0]=counts[1]=0;
 }
 
 
@@ -26,6 +28,7 @@ Variant::Variant(String ID,int pos,char ref,char alt,int g[2])
   genotype[0]=g[0]; 
   genotype[1]=g[1]; 
   edges.setAllTo(0); 
+  counts[0]=counts[1]=0;
 }
 
 

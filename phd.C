@@ -54,7 +54,8 @@ class Application {
   void installEdges(ReadVariants &,const String &readID,
 		    const String &qualities,VariantGraph &);
   void findVariantsInRead(VariantGraph &,const SamRecord *,
-			  CigarAlignment &,ReadVariants &);
+			  CigarAlignment &,ReadVariants &,
+			  const String &qualities);
   void processGraph(VariantGraph &);
 public:
   Application();
@@ -365,7 +366,8 @@ void Application::addEdges(const SamRecord *read,
   CigarAlignment &alignment=*cigar.getAlignment();
   const int numNodes=graph.size();
   ReadVariants readVariants;
-  findVariantsInRead(graph,read,alignment,readVariants);
+  findVariantsInRead(graph,read,alignment,readVariants,
+		     read->getQualityScores());
   installEdges(readVariants,read->getID(),read->getQualityScores(),graph);
   delete &alignment;
 }
@@ -375,7 +377,8 @@ void Application::addEdges(const SamRecord *read,
 void Application::findVariantsInRead(VariantGraph &graph,
 				     const SamRecord *read,
 				     CigarAlignment &alignment,
-				     ReadVariants &variants)
+				     ReadVariants &variants,
+				     const String &qualities)
 {
   const int L=alignment.length();
   const int offset=read->getRefPos();
@@ -390,7 +393,7 @@ void Application::findVariantsInRead(VariantGraph &graph,
       if(v.getPos()==refPos) {
 	if(qual[readPos]<MIN_QUAL) continue;
 	const char c=seq[readPos];
-	SNP_ALLELE allele;
+	Allele allele;
 	if(c==v.getRef()) allele=REF;
 	else if(c==v.getAlt()) allele=ALT;
 	else {
@@ -402,7 +405,8 @@ void Application::findVariantsInRead(VariantGraph &graph,
 	      <<" READ POS="<<readPos<<endl;
 	  continue;
 	}
-	variants.push_back(VariantInRead(v,readPos,allele));
+	const float p=1-illumina.charToErrorProb(qualities[refPos]);
+	variants.push_back(VariantInRead(v,readPos,allele,p));
       }
     }
   }
@@ -410,18 +414,19 @@ void Application::findVariantsInRead(VariantGraph &graph,
 
 
 
-void Application::installEdges(ReadVariants &variants,const String &readID,
+void Application::installEdges(ReadVariants &read,const String &readID,
 			       const String &qualities,VariantGraph &G)
 {
-  G.addRead(variants);
+  G.getReads().push_back(read);
   const int N=variants.size();
   for(int i=0 ; i<N-1 ; ++i) {
     VariantInRead &thisVar=variants[i], &nextVar=variants[i+1];
     ++thisVar.v.getEdges()[thisVar.allele][nextVar.allele];
     Vector<pair<float,float> > &cell=
       thisVar.v.getProbCorrect()[thisVar.allele][nextVar.allele];
-    const float p1=1-illumina.charToErrorProb(qualities[thisVar.pos]);
-    const float p2=1-illumina.charToErrorProb(qualities[nextVar.pos]);
+    //const float p1=1-illumina.charToErrorProb(qualities[thisVar.pos]);
+    //const float p2=1-illumina.charToErrorProb(qualities[nextVar.pos]);
+    const float p1=thisVar.probCorrect, p2=nextVar.probCorrect;
     if(!isFinite(p1) || !isFinite(p2))
       cout<<"PHRED: "<<qualities[thisVar.pos]<<"="
 	  <<illumina.charToErrorProb(qualities[thisVar.pos])
@@ -435,6 +440,7 @@ void Application::installEdges(ReadVariants &variants,const String &readID,
 
 void Application::processGraph(VariantGraph &G)
 {
+  // Count concordant/discordant edges
   const int N=G.size();
   int totalEdges=0;
   for (int i=0 ; i<N-1 ; ++i) {
@@ -458,8 +464,10 @@ void Application::processGraph(VariantGraph &G)
       throw String(v.getID())+" UNRESOLVED";
       } */
 
-  // Get the connected components
+  // Phase the graph using the reads
   G.phase(illumina,MIN_PROB_CORRECT);
+
+  // Get the connected components
   Vector<VariantGraph> components;
   G.getComponents(components,illumina,MIN_PROB_CORRECT);
   for(int i=0 ; i<components.size() ; ++i) {
@@ -478,6 +486,21 @@ void Application::processGraph(VariantGraph &G)
     }
     cout<<endl;
   }
+
+  // Discard reads inconsistent with chosen phase
+  Vector<ReadVariants> &reads=G.getReads(), filtered;
+  for(Vector<ReadVariants>::iterator cur=reads.begin(), end=reads.end() ;
+      cur!=end ; ++cur) {
+    ReadVariants &read=*cur;
+    if(read.consistentWithPhase()) filtered.push_back(read);
+  }
+  G.getReads()=filtered;
+
+  // Assign maternal/paternal haplotypes to connected components
+  G.phaseComponents(components);
+
+  // Assign reads to haplotypes
+  G.assignReads(components);
 }
 
 

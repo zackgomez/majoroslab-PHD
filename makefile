@@ -19,6 +19,8 @@ $(OBJ)/phd.o:\
 #---------------------------------------------------------
 phd: \
 		$(OBJ)/ReadVariants.o \
+		$(OBJ)/Allele.o \
+		$(OBJ)/Phase.o \
 		$(OBJ)/SamReader.o \
 		$(OBJ)/SamRecord.o \
 		$(OBJ)/Variant.o \
@@ -27,6 +29,8 @@ phd: \
 		$(OBJ)/phd.o
 	$(CC) $(LDFLAGS) -o phd \
 		$(OBJ)/ReadVariants.o \
+		$(OBJ)/Allele.o \
+		$(OBJ)/Phase.o \
 		$(OBJ)/SamReader.o \
 		$(OBJ)/SamRecord.o \
 		$(OBJ)/Variant.o \
@@ -89,4 +93,18 @@ $(OBJ)/ReadVariants.o:\
 		ReadVariants.H
 	$(CC) $(CFLAGS) -o $(OBJ)/ReadVariants.o -c \
 		ReadVariants.C
+#---------------------------------------------------------
+
+#--------------------------------------------------------
+$(OBJ)/Phase.o:\
+		Phase.C\
+		Phase.H
+	$(CC) $(CFLAGS) -o $(OBJ)/Phase.o -c \
+		Phase.C
+#--------------------------------------------------------
+$(OBJ)/Allele.o:\
+		Allele.C\
+		Allele.H
+	$(CC) $(CFLAGS) -o $(OBJ)/Allele.o -c \
+		Allele.C
 #---------------------------------------------------------
