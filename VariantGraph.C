@@ -68,7 +68,9 @@ void VariantGraph::phaseComponent(VariantGraph &component)
     Variant v=component[i];
     v.setComponentPhase(phase);
     switch(v.getPhase()) {
-    case UNPHASED: throw "Unphased site in connected component";
+    case UNPHASED: 
+      if(i!=N-1) throw "Unphased site in connected component";
+      break;
     case IN_PHASE: break;
     case ANTI_PHASED: phase=swap(phase); break;
     default: throw "No case in VariantGraph::phaseComponent";

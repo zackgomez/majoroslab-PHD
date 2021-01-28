@@ -405,7 +405,7 @@ void Application::findVariantsInRead(VariantGraph &graph,
 	      <<" READ POS="<<readPos<<endl;
 	  continue;
 	}
-	const float p=1-illumina.charToErrorProb(qualities[refPos]);
+	const float p=1-illumina.charToErrorProb(qualities[readPos]);
 	variants.push_back(VariantInRead(v,readPos,allele,p));
       }
     }
@@ -501,6 +501,17 @@ void Application::processGraph(VariantGraph &G)
 
   // Assign reads to haplotypes
   G.assignReads(components);
+
+  // Print out variant IDs and read counts for all components
+  int compNum=1;
+  for(Vector<VariantGraph>::iterator cur=components.begin(),
+	end=components.end() ; cur!=end ; ++cur) {
+    VariantGraph &comp=*cur;
+    Variant &v=comp[0];
+    cout<<"Component"<<compNum<<": "<<v.getID()<<" ref="
+	<<v.getCount(REF)<<" alt="<<v.getCount(ALT)<<endl;
+    ++compNum;
+  }
 }
 
 
