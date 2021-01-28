@@ -51,9 +51,9 @@ void VariantGraph::phase(const IlluminaQual &Q,float minQual)
 
 
 
-void VariantGraph::phaseComponents(Vector<VectorGraph> &components)
+void VariantGraph::phaseComponents(Vector<VariantGraph> &components)
 {
-  for(Vector<VectorGraph>::iterator cur=components.begin(),
+  for(Vector<VariantGraph>::iterator cur=components.begin(),
 	end=components.end() ; cur!=end ; ++cur)
     phaseComponent(*cur);
 }
@@ -89,16 +89,16 @@ void VariantGraph::assignReads(Vector<VariantGraph> &components)
 
 void VariantGraph::assignReads(VariantGraph &component)
 {
-  for(Vector<ReadVariants>::iterator cur=component.begin(), 
-	end=component.end() ; cur!=end ; ++cur) {
+  for(Vector<ReadVariants>::iterator cur=component.reads.begin(), 
+	end=component.reads.end() ; cur!=end ; ++cur) {
     ReadVariants &read=*cur;
     VariantInRead &firstVar=read[0];
-    VariantPhase compPhase=firstVar.v.getComponentPhase();
+    VariantPhase compPhase=firstVar.v->getComponentPhase();
     Allele allele=firstVar.allele; // REF or ALT
     if(compPhase==IN_PHASE)
-      ++firstVar.v.getCount(allele);
+      ++firstVar.v->getCount(allele);
     else
-      ++firstVar.v.getCount(swap(allele));
+      ++firstVar.v->getCount(swap(allele));
   }
 }
 

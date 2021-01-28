@@ -8,7 +8,6 @@
 #define INCL_Phase_H
 #include <iostream>
 using namespace std;
-using namespace BOOM;
 
 enum VariantPhase {
   UNPHASED,

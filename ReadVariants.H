@@ -22,7 +22,7 @@ public:
   VariantInRead &operator[](int i) { return variants[i]; }
   Vector<VariantInRead> &getVariants();
   bool consistentWithPhase();
-protedted:
+protected:
   Vector<VariantInRead> variants; // The alleles in this read
 };
 

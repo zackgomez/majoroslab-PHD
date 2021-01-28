@@ -418,12 +418,12 @@ void Application::installEdges(ReadVariants &read,const String &readID,
 			       const String &qualities,VariantGraph &G)
 {
   G.getReads().push_back(read);
-  const int N=variants.size();
+  const int N=read.size();
   for(int i=0 ; i<N-1 ; ++i) {
-    VariantInRead &thisVar=variants[i], &nextVar=variants[i+1];
-    ++thisVar.v.getEdges()[thisVar.allele][nextVar.allele];
+    VariantInRead &thisVar=read[i], &nextVar=read[i+1];
+    ++thisVar.v->getEdges()[thisVar.allele][nextVar.allele];
     Vector<pair<float,float> > &cell=
-      thisVar.v.getProbCorrect()[thisVar.allele][nextVar.allele];
+      thisVar.v->getProbCorrect()[thisVar.allele][nextVar.allele];
     //const float p1=1-illumina.charToErrorProb(qualities[thisVar.pos]);
     //const float p2=1-illumina.charToErrorProb(qualities[nextVar.pos]);
     const float p1=thisVar.probCorrect, p2=nextVar.probCorrect;

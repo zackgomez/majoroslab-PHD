@@ -8,7 +8,6 @@
 #define INCL_Allele_H
 #include <iostream>
 using namespace std;
-using namespace BOOM;
 
 enum Allele {
   REF=0,

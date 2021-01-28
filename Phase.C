@@ -7,7 +7,6 @@
 #include <iostream>
 #include "Phase.H"
 using namespace std;
-using namespace BOOM;
 
 VariantPhase swap(VariantPhase p) 
 {

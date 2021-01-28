@@ -12,7 +12,6 @@
 #include "BOOM/IlluminaQual.H"
 #include "BOOM/Vector.H"
 #include "Phase.H"
-#include "Haplotype.H"
 using namespace std;
 using namespace BOOM;
 

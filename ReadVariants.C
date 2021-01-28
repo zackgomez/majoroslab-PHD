@@ -28,9 +28,9 @@ bool ReadVariants::consistentWithPhase()
   const int L=variants.size();
   for(int i=0 ; i<L-1 ; ++i) {
     const VariantInRead &thisVar=variants[i], nextVar=variants[i+1];
-    const SNP_ALLELE a1=thisVar.allele, a2=nextVar.allele;
+    const Allele a1=thisVar.allele, a2=nextVar.allele;
     const VariantPhase readPhase=a1==a2 ? IN_PHASE : ANTI_PHASED;
-    const VariantPhase phase=thisVar.v.getPhase();
+    const VariantPhase phase=thisVar.v->getPhase();
     //if(phase==UNPHASED) ...?
     if(readPhase!=phase) return false;
   }

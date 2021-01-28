@@ -7,7 +7,6 @@
 #include <iostream>
 #include "Allele.H"
 using namespace std;
-using namespace BOOM;
 
 Allele swap(Allele allele)
 {

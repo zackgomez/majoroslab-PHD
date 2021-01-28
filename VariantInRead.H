@@ -13,11 +13,12 @@ using namespace std;
 using namespace BOOM;
 
 struct VariantInRead {
-  Variant &v;
+  Variant *v;
   int pos; // position in read
   Allele allele;
   float probCorrect; // Probability that the base was called correctly
-  VariantInRead(Variant &v,int pos,SNP_ALLELE a,float probCorrect);
+  VariantInRead(Variant &v,int pos,Allele a,float probCorrect);
+  VariantInRead() : v(NULL) {}
 };
 
 #endif
