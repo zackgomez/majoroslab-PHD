@@ -368,7 +368,9 @@ void Application::addEdges(const SamRecord *read,
   ReadVariants readVariants;
   findVariantsInRead(graph,read,alignment,readVariants,
 		     read->getQualityScores());
-  installEdges(readVariants,read->getID(),read->getQualityScores(),graph);
+  if(readVariants.size()>0)
+    installEdges(readVariants,read->getID(),read->getQualityScores(),
+		 graph);
   delete &alignment;
 }
 
@@ -468,9 +470,9 @@ void Application::processGraph(VariantGraph &G)
   G.phase(illumina,MIN_PROB_CORRECT);
 
   // Get the connected components
-  Vector<VariantGraph> components;
+  Vector<ConnectedComponent> components;
   G.getComponents(components,illumina,MIN_PROB_CORRECT);
-  for(int i=0 ; i<components.size() ; ++i) {
+  /*for(int i=0 ; i<components.size() ; ++i) {
     cout<<"Component "<<(i+1)<<": ";
     VariantGraph &c=components[i];
     for(int i=0 ; i<c.size() ; ++i) {
@@ -485,13 +487,14 @@ void Application::processGraph(VariantGraph &G)
 	}
     }
     cout<<endl;
-  }
+    }*/
 
   // Discard reads inconsistent with chosen phase
   Vector<ReadVariants> &reads=G.getReads(), filtered;
   for(Vector<ReadVariants>::iterator cur=reads.begin(), end=reads.end() ;
       cur!=end ; ++cur) {
     ReadVariants &read=*cur;
+    if(read.size()==0) continue;
     if(read.consistentWithPhase()) filtered.push_back(read);
   }
   G.getReads()=filtered;
@@ -500,16 +503,28 @@ void Application::processGraph(VariantGraph &G)
   G.phaseComponents(components);
 
   // Assign reads to haplotypes
-  G.assignReads(components);
+  G.assignReads();
 
   // Print out variant IDs and read counts for all components
   int compNum=1;
-  for(Vector<VariantGraph>::iterator cur=components.begin(),
+  for(Vector<ConnectedComponent>::iterator cur=components.begin(),
 	end=components.end() ; cur!=end ; ++cur) {
-    VariantGraph &comp=*cur;
+    ConnectedComponent &comp=*cur;
     Variant &v=comp[0];
-    cout<<"Component"<<compNum<<": "<<v.getID()<<" ref="
-	<<v.getCount(REF)<<" alt="<<v.getCount(ALT)<<endl;
+    cout<<"Component"<<compNum<<": "<<" ref="
+	<<v.getCount(REF)<<" alt="<<v.getCount(ALT)<<" ";
+    for(int i=0 ; i<comp.size() ; ++i) {
+      cout<<comp[i].getID();
+      if(i+1<comp.size())
+	switch(comp[i].getPhase()) {
+	case UNPHASED: throw "unphased link in graph!";
+	case IN_PHASE: cout<<"-"; break;
+	case ANTI_PHASED: cout<<"\\"; break;
+	default: 
+	  throw String("unknown VariantPhase value ")+comp[i].getPhase();
+	}
+    }
+    cout<<endl;
     ++compNum;
   }
 }

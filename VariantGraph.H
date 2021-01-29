@@ -11,6 +11,7 @@
 #include "BOOM/IlluminaQual.H"
 #include "Variant.H"
 #include "ReadVariants.H"
+#include "ConnectedComponent.H"
 using namespace std;
 using namespace BOOM;
 
@@ -19,8 +20,8 @@ public:
   VariantGraph();
   Vector<Variant> &getVariants();
   void phase(const IlluminaQual &,float minQual);
-  void getComponents(Vector<VariantGraph> &into,const IlluminaQual &Q,
-		     float minQual);
+  void getComponents(Vector<ConnectedComponent> &into,
+		     const IlluminaQual &Q,float minQual);
   int size() { return variants.size(); }
   void push_back(const Variant &v) { variants.push_back(v); }
   void clear() { variants.clear(); }
@@ -28,11 +29,12 @@ public:
   Vector<Variant>::iterator begin() { return variants.begin(); }
   Vector<Variant>::iterator end() { return variants.end(); }
   Vector<ReadVariants> &getReads() { return reads; }
-  void phaseComponents(Vector<VariantGraph> &components);
-  void assignReads(Vector<VariantGraph> &components);
+  void phaseComponents(Vector<ConnectedComponent> &);
+  //void assignReads(Vector<ConnectedComponent> &);
+  void assignReads();
 protected:
-  void phaseComponent(VariantGraph &component);
-  void assignReads(VariantGraph &component);
+  void phaseComponent(ConnectedComponent &);
+  //void assignReads(ConnectedComponent &);
   Vector<Variant> variants;
   Vector<ReadVariants> reads;
 };

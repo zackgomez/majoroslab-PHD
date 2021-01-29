@@ -22,10 +22,10 @@ Vector<Variant> &VariantGraph::getVariants()
 
 
 
-void VariantGraph::getComponents(Vector<VariantGraph> &into,
+void VariantGraph::getComponents(Vector<ConnectedComponent> &into,
 				 const IlluminaQual &Q,float confidence)
 {
-  VariantGraph comp;
+  ConnectedComponent comp;
   const int numVariants=size();
   for(int i=0 ; i<numVariants ; ++i) {
     Variant &v=variants[i];
@@ -51,21 +51,21 @@ void VariantGraph::phase(const IlluminaQual &Q,float minQual)
 
 
 
-void VariantGraph::phaseComponents(Vector<VariantGraph> &components)
+void VariantGraph::phaseComponents(Vector<ConnectedComponent> &components)
 {
-  for(Vector<VariantGraph>::iterator cur=components.begin(),
+  for(Vector<ConnectedComponent>::iterator cur=components.begin(),
 	end=components.end() ; cur!=end ; ++cur)
     phaseComponent(*cur);
 }
 
 
 
-void VariantGraph::phaseComponent(VariantGraph &component)
+void VariantGraph::phaseComponent(ConnectedComponent &component)
 {
   const int N=component.size();
   VariantPhase phase=IN_PHASE;
   for(int i=0 ; i<N ; ++i) {
-    Variant v=component[i];
+    Variant &v=component[i];
     v.setComponentPhase(phase);
     switch(v.getPhase()) {
     case UNPHASED: 
@@ -80,16 +80,35 @@ void VariantGraph::phaseComponent(VariantGraph &component)
 
 
 
-void VariantGraph::assignReads(Vector<VariantGraph> &components)
+void VariantGraph::assignReads()
 {
-  for(Vector<VariantGraph>::iterator cur=components.begin(),
-	end=components.end() ; cur!=end ; ++cur)
-    assignReads(*cur);
+  for(Vector<ReadVariants>::iterator cur=reads.begin(), end=reads.end() ; 
+      cur!=end ; ++cur) {
+    ReadVariants &read=*cur;
+    if(read.size()<1) return;
+    //cout<<read.size()<<endl;
+    VariantInRead &firstVar=read[0];
+    //cout<<"firstVar.v="<<firstVar.v<<endl;
+    VariantPhase compPhase=firstVar.v->getComponentPhase();
+    Allele allele=firstVar.allele; // REF or ALT
+    if(compPhase==IN_PHASE)
+      ++firstVar.v->getCount(allele);
+    else
+      ++firstVar.v->getCount(swap(allele));
+  }
 }
 
 
+/*void VariantGraph::assignReads(Vector<ConnectedComponents> &components)
+{
+  for(Vector<ConnectedComponent>::iterator cur=components.begin(),
+	end=components.end() ; cur!=end ; ++cur)
+	assignReads(*cur);
+}*/
 
-void VariantGraph::assignReads(VariantGraph &component)
+
+
+/*void VariantGraph::assignReads(ConnectedComponent &component)
 {
   for(Vector<ReadVariants>::iterator cur=component.reads.begin(), 
 	end=component.reads.end() ; cur!=end ; ++cur) {
@@ -102,7 +121,7 @@ void VariantGraph::assignReads(VariantGraph &component)
     else
       ++firstVar.v->getCount(swap(allele));
   }
-}
+  }*/
 
 
 
