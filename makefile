@@ -118,3 +118,16 @@ $(OBJ)/ConnectedComponent.o:\
 	$(CC) $(CFLAGS) -o $(OBJ)/ConnectedComponent.o -c \
 		ConnectedComponent.C
 #---------------------------------------------------------
+#---------------------------------------------------------
+$(OBJ)/count-isoform-variants.o:\
+		count-isoform-variants.C
+	$(CC) $(CFLAGS) -o $(OBJ)/count-isoform-variants.o -c \
+		count-isoform-variants.C
+#---------------------------------------------------------
+count-isoform-variants: \
+		$(OBJ)/Variant.o \
+		$(OBJ)/count-isoform-variants.o
+	$(CC) $(LDFLAGS) -o count-isoform-variants \
+		$(OBJ)/Variant.o \
+		$(OBJ)/count-isoform-variants.o \
+		$(LIBS)

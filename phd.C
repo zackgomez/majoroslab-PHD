@@ -25,6 +25,7 @@ using namespace std;
 using namespace BOOM;
 
 const float MIN_PROB_CORRECT=0.8;
+const bool DEDUPLICATE=true;
 
 class Application {
   IlluminaQual illumina;
@@ -34,6 +35,7 @@ class Application {
   String vcfFile;
   int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
   int numConcordant, numNonzero;
+  Set<int> seenPositions;
   void processExons(Vector<GffFeature*> &exons,
 		    Vector<Interval> &intervals,VariantGraph &,
 		    String &substrate);
@@ -140,7 +142,8 @@ int Application::main(int argc,char *argv[])
 	String substrate;
 	processExons(exons,exonIntervals,variants,substrate);
 	if(substrate!=chrom)
-	  { cout<<"CHROM "<<substrate<<endl; chrom=substrate; }
+	  { cout<<"CHROM "<<substrate<<endl; chrom=substrate; 
+	    seenPositions.clear(); }
 	deleteExons(exons);
 	if(variants.size()==0) continue;
 	processSam(sam,variants,exonIntervals,geneBegin,geneEnd,
@@ -159,7 +162,8 @@ int Application::main(int argc,char *argv[])
       { delete feature; continue; }
     exons.push_back(feature);
   }
-  cout<<readsSeen<<" reads seen, "<<readsDiscarded<<" discarded"<<endl;
+  cout<<readsSeen<<" reads seen, "<<readsDiscarded<<" discarded, "
+      <<readsUnmapped<<" unmapped"<<endl;
   cout<<numConcordant<<" concordant edges out of "<<numNonzero<<" nonzero"
       <<endl;
   return 0;
@@ -220,16 +224,23 @@ void Application::processSam(SamReader &sam,VariantGraph &graph,
     else { rec=sam.nextRecord(); if(rec) ++readsSeen; }
     if(!rec) break;
     if(rec->flag_unmapped()) { delete rec; ++readsUnmapped; continue; }
+    const int refPos=rec->getRefPos();
+    if(seenPositions.isMember(refPos)) { delete rec; continue; }
+    seenPositions+=refPos;
     String readSubstrate=rec->getRefName();
     readSubstrate=chrRegex.substitute(readSubstrate,"");
     if(readSubstrate<substrate) 
-      { delete rec; ++readsWrongChrom; continue; } // ### ???
+      { delete rec; ++readsWrongChrom; 
+	continue; } // ### ???
 
     // This line is not quite correct:
-    if(rec->getRefPos()+rec->getSequence().getLength()<geneBegin)
-      { delete rec; ++readsDiscarded; continue; }
+    if(refPos+rec->getSequence().getLength()<geneBegin)
+      { /*cout<<"DISCARDED READ: "<<rec->getID()<<" "<<rec->getRefPos()
+	  <<" "<<rec->getRefPos()+rec->getSequence().getLength()<<endl;*/
+	delete rec; ++readsDiscarded; 
+	continue; }
 
-    if(rec->getRefPos()>geneEnd) { buffer=rec; break;}
+    if(refPos>geneEnd) { buffer=rec; break;}
     addEdges(rec,graph);
     delete rec;
   }
@@ -527,6 +538,11 @@ void Application::processGraph(VariantGraph &G)
     cout<<endl;
     ++compNum;
   }
+
+  // Print out, for each read, how many variants it contains
+  /*for(int i=0 ; i<filtered.size() ; ++i)
+    cout<<"\tread "<<i<<" spans "<<filtered[i].size()<<" variants"<<endl;*/
+
 }
 
 
