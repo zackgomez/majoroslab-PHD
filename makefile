@@ -131,3 +131,16 @@ count-isoform-variants: \
 		$(OBJ)/Variant.o \
 		$(OBJ)/count-isoform-variants.o \
 		$(LIBS)
+
+#--------------------------------------------------------
+$(OBJ)/count-combinations-in-fragments.o:\
+		count-combinations-in-fragments.C
+	$(CC) $(CFLAGS) -o $(OBJ)/count-combinations-in-fragments.o -c \
+		count-combinations-in-fragments.C
+#---------------------------------------------------------
+count-combinations-in-fragments: \
+		$(OBJ)/count-combinations-in-fragments.o
+	$(CC) $(LDFLAGS) -o count-combinations-in-fragments \
+		$(OBJ)/count-combinations-in-fragments.o \
+		$(LIBS)
+#---------------------------------------------
