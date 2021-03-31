@@ -42,6 +42,7 @@ public:
 		 int &readHets,int whichHap0or1);
   void parseHeader(const String &filename);
   void addToPairCount(const Variant &v1,const Variant &v2,int whichHap0or1);
+  void getComboStats();
 private:
   Regex genotypeRegex;
   String chromName;
@@ -77,6 +78,8 @@ Application::Application()
 
 int Application::main(int argc,char *argv[])
 {
+  randomize();
+
   // Process command line
   CommandLine cmd(argc,argv,"");
   if(cmd.numArgs()!=7)
@@ -112,7 +115,32 @@ int Application::main(int argc,char *argv[])
     cout<<fragHets<<"\t"<<readHets<<endl;
   }
 
+  // Collect statistics about combinations of alleles
+  getComboStats();
+
   return 0;
+}
+
+
+
+void Application::getComboStats()
+{
+  int totalPairs=0;
+  int allFourHaps=0;
+  for(Map<String,Array2D<int>*>::iterator cur=allelePairCounts.begin(),
+	end=allelePairCounts.end() ; cur!=end ; ++cur) {
+    pair<String,Array2D<int>*> p=*cur;
+    const Array2D<int> &m=*p.second;
+    //cout<<p.first<<"\t"<<m[0][0]<<"\t"<<m[0][1]<<"\t"<<m[1][0]<<"\t"<<m[1][1]<<endl;
+    int nonzero=0;
+    for(int i=0 ; i<2 ; ++i) 
+      for(int j=0 ; j<2 ; ++j)
+	if(m[i][j]>0) ++nonzero;
+    if(nonzero==4) ++allFourHaps;
+    ++totalPairs;
+  }
+  cout<<"Observed all combinations in "<<allFourHaps<<" out of "<<totalPairs
+      <<" pairs"<<endl;
 }
 
 
@@ -172,8 +200,9 @@ void Application::addToPairCount(const Variant &v1,const Variant &v2,int whichHa
 {
   String key=String(v1.pos)+" "+String(v2.pos);
   if(!allelePairCounts.isDefined(key)) {
-    Array2D<int> &a=allelePairCounts[key]=new Array2D<int>(2,2);
-    a.setAllTo(0);
+    Array2D<int> *a=new Array2D<int>(2,2);
+    allelePairCounts[key]=a;
+    a->setAllTo(0);
   }
   Array2D<int> &a=*allelePairCounts[key];
   ++a[v1.genotype[whichHap]][v2.genotype[whichHap]];
@@ -193,7 +222,7 @@ bool Application::parseVariant(const String &sampleID,const String &line,
 
   if(!genotypeRegex.match(sGenotype)) 
     throw sGenotype+" : can't parse genotype";
-  const String gt1=genotypeRegex[2], gt2=genotypeRegex[2];
+  const String gt1=genotypeRegex[1], gt2=genotypeRegex[2];
   if(gt1.length()!=1 || gt2.length()!=1) return false;
   const bool het=gt1!=gt2;
   if(!het) return false;
@@ -212,7 +241,9 @@ int Application::countHets(const String &sampleID,const Interval &interval,
 {
   Vector<Variant> variants;
   getVariants(sampleID,interval,variants);
-  //addToPairCount(const Variant &v1,const Variant &v2,int whichHap)
+  const int n=variants.size();
+  for(int i=0 ; i<n-1 ; ++i)
+    addToPairCount(variants[i],variants[i+1],whichHap);
   return variants.size();
 }
 
