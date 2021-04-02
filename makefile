@@ -41,6 +41,17 @@ phd: \
 		$(OBJ)/phd.o \
 		$(LIBS)
 #---------------------------------------------------------
+$(OBJ)/subset-vcf-by-samples.o:\
+		subset-vcf-by-samples.C
+	$(CC) $(CFLAGS) -o $(OBJ)/subset-vcf-by-samples.o -c \
+		subset-vcf-by-samples.C
+#---------------------------------------------------------
+subset-vcf-by-samples: \
+		$(OBJ)/subset-vcf-by-samples.o
+	$(CC) $(LDFLAGS) -o subset-vcf-by-samples \
+		$(OBJ)/subset-vcf-by-samples.o \
+		$(LIBS)
+#---------------------------------------------------------
 $(OBJ)/sort-gff.o:\
 		sort-gff.C
 	$(CC) $(CFLAGS) -o $(OBJ)/sort-gff.o -c \
