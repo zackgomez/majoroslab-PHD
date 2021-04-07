@@ -114,7 +114,6 @@ int Application::main(int argc,char *argv[])
 
   // Load VCF file
   loadVCF(vcfFile);
-
   // Simulate fragments
   ofstream os(outfile.c_str());
   for(int i=0 ; i<numFragments ; ++i) {
@@ -178,6 +177,7 @@ void Application::variantsInInterval(const String &sampleID,const Interval &inte
     const VariantAndGenotypes &vg=*cur;
     const int index=sampleColumns[sampleID];
     Genotype g=vg.genotypes[index];
+    if(!g.isHet()) continue;
     Array1D<int> geno(2); geno[0]=g[0]; geno[1]=g[1];
     SimpleVariant v(vg.variant.getID(),vg.variant.getChr(),vg.variant.getPos(),
 		    geno);
@@ -192,7 +192,6 @@ void Application::variantsInInterval(const Interval &interval,
 {
   const int n=allVariants.size();
   int begin=0, end=n, want=interval.getBegin();
-  //cout<<"binary search begins..."<<endl;
   while(begin<end) {
     const int mid=(begin+end)/2;
     const int midVal=allVariants[mid].variant.getPos();
@@ -205,18 +204,17 @@ void Application::variantsInInterval(const Interval &interval,
   end=interval.getEnd();
   for(; i<n && allVariants[i].variant.getPos()<end ; ++i) 
     into.push_back(allVariants[i]);
-  //cout<<"found "<<into.size()<<endl;
 }
 
 
 
 void Application::loadVCF(const String &filename)
 {
-  cout<<"loading VCF"<<endl;
+  //cout<<"loading VCF"<<endl;
   VcfReader reader(filename);
   VariantAndGenotypes vg;
   while(reader.nextVariant(vg)) allVariants.push_back(vg);
-  cout<<"done"<<endl;
+  //cout<<"done"<<endl;
   if(!isSorted(allVariants)) sort(allVariants);
 }
 
@@ -256,7 +254,8 @@ void Application::parseHeader(const String &filename)
     if(fields[0]!="#CHROM") continue;
     for(int i=9 ; i<n ; ++i) {
       const String &sample=fields[i];
-      sampleColumns[sample]=i;
+      sampleColumns[sample]=i-9;
+      //cout<<sample<<" assigned col "<<i<<endl;
     }
     pipe.close();
     return;
