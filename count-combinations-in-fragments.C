@@ -20,6 +20,18 @@
 using namespace std;
 using namespace BOOM;
 
+class VcfIndex {
+public:
+  VcfIndex(const Vector<VariantAndGenotypes> &,int binSize,int minCoord,
+	   int maxCoord);
+  void lookup(int coord,int fragLen,Vector<VariantAndGenotypes> &into);
+protected:
+  void initialize();
+  const int minCoord, maxCoord, numBins, binSize;
+  Array1D<int> pointers; // indices into the array of variants, or -1 if NULL
+  const Vector<VariantAndGenotypes> &allVariants;
+};
+
 struct SimpleVariant {
   String ID;
   String chrom;
@@ -32,9 +44,10 @@ struct SimpleVariant {
 class Application {
 public:
   Application();
+  ~Application() { cout<<"dtor"<<endl; }
   int main(int argc,char *argv[]);
-  bool parseVariant(const String &sampleID,const String &line,String &ID,int &pos,
-		    Array1D<int> &genotype);
+  //bool parseVariant(const String &sampleID,const String &line,String &ID,int &pos,
+  //		    Array1D<int> &genotype);
   //void getVariants(const String &sampleID,const Interval &,
   //		   Vector<SimpleVariant> &variants);
   void variantsInInterval(const Interval &,Vector<VariantAndGenotypes> &into);
@@ -60,6 +73,7 @@ private:
   Map<String,int> sampleColumns; // column indices in VCF file for samples
   Map<String,Array2D<int>*> allelePairCounts; // key = position x position
   Vector<VariantAndGenotypes> allVariants;
+  VcfIndex *vcfIndex;
 };
 
 
@@ -79,8 +93,54 @@ int main(int argc,char *argv[])
 
 
 
+VcfIndex::VcfIndex(const Vector<VariantAndGenotypes> &variants,int binSize,
+		   int minCoord,int maxCoord)
+  : allVariants(variants), binSize(binSize), minCoord(minCoord), maxCoord(maxCoord), 
+    numBins(maxCoord/binSize+1)
+{
+  initialize();
+}
+
+
+
+void VcfIndex::lookup(int begin,int fragLen,Vector<VariantAndGenotypes> &into)
+{
+  if(begin<minCoord) throw "Coord too small in VcfIndex"; // ### DEBUGGING
+  if(begin>maxCoord) throw "Coord too large in VcfIndex"; // ### DEBUGGING
+  const int bin=(begin-minCoord)/binSize;
+  const int index=pointers[bin];
+  if(index<0) return;
+  const int end=begin+fragLen, numVar=allVariants.size();
+  int i=index;
+  while(i<numVar && allVariants[i].variant.getPos()<begin) ++i;
+  for(; i<numVar ; ++i) {
+    const VariantAndGenotypes &v=allVariants[i];
+    const int pos=v.variant.getPos();
+    if(pos>=end) break;
+    into.push_back(v);
+  }
+}
+
+
+
+void VcfIndex::initialize()
+{
+  const int numVar=allVariants.size();
+  int j=0;
+  pointers.resize(numBins);
+  for(int i=0 ; i<numBins ; ++i) {
+    int begin=minCoord+i*binSize, end=minCoord+(i+1)*binSize;
+    while(j<numVar && allVariants[j].variant.getPos()<begin) ++j;
+    if(j<numVar && allVariants[j].variant.getPos()<end) pointers[i]=j++; 
+    else pointers[i]=-1;
+  }
+  //cout<<pointers<<endl;
+}
+
+
+
 Application::Application()
-  : genotypeRegex("(.+)\\\\|(.+)")
+  : genotypeRegex("(.+)\\\\|(.+)"), vcfIndex(NULL)
 {
   // ctor
 }
@@ -93,8 +153,8 @@ int Application::main(int argc,char *argv[])
 
   // Process command line
   CommandLine cmd(argc,argv,"");
-  if(cmd.numArgs()!=10)
-    throw String("count-combinations-in-fragments <indexed-vcf.gz> <chrom> <chrom-len> <fragment-size> <read-length> <num-fragments> <sample-IDs> <chr-begin> <chr-end> <coutfile>");
+  if(cmd.numArgs()!=11)
+    throw String("count-combinations-in-fragments <indexed-vcf.gz> <chrom> <chrom-len> <fragment-size> <read-length> <num-fragments> <sample-IDs> <chr-begin> <chr-end> <coutfile> <VCF-index-bin-size>");
   vcfFile=cmd.arg(0);
   chromName=cmd.arg(1);
   const int chromLen=cmd.arg(2).asInt();
@@ -105,6 +165,7 @@ int Application::main(int argc,char *argv[])
   const int chrBegin=cmd.arg(7).asInt();
   const int chrEnd=cmd.arg(8).asInt();
   const String outfile=cmd.arg(9);
+  const int vcfBinSize=cmd.arg(10).asInt();
 
   // Parse sampleIDs
   Vector<String> samples;
@@ -113,7 +174,14 @@ int Application::main(int argc,char *argv[])
   parseHeader(vcfFile);
 
   // Load VCF file
+  cout<<"loading VCF file"<<endl;
   loadVCF(vcfFile);
+
+  // Index the VCF file for fast lookup
+  cout<<"Indexing VCF"<<endl;
+  vcfIndex=new VcfIndex(allVariants,vcfBinSize,chrBegin,chrEnd);
+  cout<<"done indexing"<<endl;
+
   // Simulate fragments
   ofstream os(outfile.c_str());
   for(int i=0 ; i<numFragments ; ++i) {
@@ -171,7 +239,7 @@ void Application::variantsInInterval(const String &sampleID,const Interval &inte
 				     Vector<SimpleVariant> &into)
 {
   Vector<VariantAndGenotypes> vars;
-  variantsInInterval(interval,vars);
+  vcfIndex->lookup(interval.getBegin(),interval.getLength(),vars);
   for(Vector<VariantAndGenotypes>::iterator cur=vars.begin(), end=vars.end() ; 
       cur!=end ; ++cur) {
     const VariantAndGenotypes &vg=*cur;
@@ -184,6 +252,26 @@ void Application::variantsInInterval(const String &sampleID,const Interval &inte
     into.push_back(v);
   }
 }
+
+
+
+/*void Application::variantsInInterval(const String &sampleID,const Interval &interval,
+				     Vector<SimpleVariant> &into)
+{
+  Vector<VariantAndGenotypes> vars;
+  variantsInInterval(interval,vars);
+  for(Vector<VariantAndGenotypes>::iterator cur=vars.begin(), end=vars.end() ; 
+      cur!=end ; ++cur) {
+    const VariantAndGenotypes &vg=*cur;
+    const int index=sampleColumns[sampleID];
+    Genotype g=vg.genotypes[index];
+    if(!g.isHet()) continue;
+    Array1D<int> geno(2); geno[0]=g[0]; geno[1]=g[1];
+    SimpleVariant v(vg.variant.getID(),vg.variant.getChr(),vg.variant.getPos(),
+		    geno);
+    into.push_back(v);
+  }
+  }*/
 
 
 
@@ -210,11 +298,19 @@ void Application::variantsInInterval(const Interval &interval,
 
 void Application::loadVCF(const String &filename)
 {
-  //cout<<"loading VCF"<<endl;
   VcfReader reader(filename);
   VariantAndGenotypes vg;
-  while(reader.nextVariant(vg)) allVariants.push_back(vg);
-  //cout<<"done"<<endl;
+  Vector<Genotype> &G=vg.genotypes;
+  while(reader.nextVariant(vg)) {
+    bool skip=false;
+    for(Vector<Genotype>::iterator cur=G.begin(), end=G.end() ; cur!=end ; ++cur) {
+      Genotype &gt=*cur;
+      const int N=gt.numAlleles();
+      if(N!=2 || gt[0]>1 || gt[1]>1 ) { skip=true; break; }
+    }
+    if(skip) continue;
+    allVariants.push_back(vg);
+  }
   if(!isSorted(allVariants)) sort(allVariants);
 }
 
@@ -312,12 +408,14 @@ void Application::addToPairCount(const SimpleVariant &v1,const SimpleVariant &v2
     a->setAllTo(0);
   }
   Array2D<int> &a=*allelePairCounts[key];
+  if(v1.genotype[whichHap]>1) cout<<"v1 "<<whichHap<<" "<<v1.genotype[whichHap]<<endl;
+  if(v2.genotype[whichHap]>1) cout<<"v2 "<<whichHap<<" "<<v2.genotype[whichHap]<<endl;
   ++a[v1.genotype[whichHap]][v2.genotype[whichHap]];
 }
 
 
 
-bool Application::parseVariant(const String &sampleID,const String &line,
+/*bool Application::parseVariant(const String &sampleID,const String &line,
 			       String &ID,int &pos,Array1D<int> &genotype)
 {
   Vector<String> fields;
@@ -339,7 +437,7 @@ bool Application::parseVariant(const String &sampleID,const String &line,
   pos=fields[1].asInt()-1; // Convert 1-based coord to 0-based
   ID=fields[2]; 
   return true;
-}
+  }*/
 
 
 
