@@ -44,7 +44,6 @@ struct SimpleVariant {
 class Application {
 public:
   Application();
-  ~Application() { cout<<"dtor"<<endl; }
   int main(int argc,char *argv[]);
   //bool parseVariant(const String &sampleID,const String &line,String &ID,int &pos,
   //		    Array1D<int> &genotype);
@@ -302,13 +301,17 @@ void Application::loadVCF(const String &filename)
   VariantAndGenotypes vg;
   Vector<Genotype> &G=vg.genotypes;
   while(reader.nextVariant(vg)) {
-    bool skip=false;
+    bool skip=false, seen0=false, seen1=false;
     for(Vector<Genotype>::iterator cur=G.begin(), end=G.end() ; cur!=end ; ++cur) {
       Genotype &gt=*cur;
       const int N=gt.numAlleles();
-      if(N!=2 || gt[0]>1 || gt[1]>1 ) { skip=true; break; }
+      if(N!=2) { skip=true; break; }
+      int gt0=gt[0], gt1=gt[1];
+      if(gt0>1 || gt1>1 ) { skip=true; break; }
+      if(gt0==0 || gt1==0) seen0=true;
+      if(gt0==1 || gt1==1) seen1=true;
     }
-    if(skip) continue;
+    if(skip || !seen0 || !seen1) continue;
     allVariants.push_back(vg);
   }
   if(!isSorted(allVariants)) sort(allVariants);
