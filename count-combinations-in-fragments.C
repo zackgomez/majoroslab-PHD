@@ -45,10 +45,6 @@ class Application {
 public:
   Application();
   int main(int argc,char *argv[]);
-  //bool parseVariant(const String &sampleID,const String &line,String &ID,int &pos,
-  //		    Array1D<int> &genotype);
-  //void getVariants(const String &sampleID,const Interval &,
-  //		   Vector<SimpleVariant> &variants);
   void variantsInInterval(const Interval &,Vector<VariantAndGenotypes> &into);
   void variantsInInterval(const String &sampleID,const Interval &,
 			  Vector<SimpleVariant> &into);
@@ -59,6 +55,8 @@ public:
   void countHets(const String &sampleID,const Interval &fragment,
 		 const Interval &read1,const Interval &read2,int &fragHets,
 		 int &readHets,int whichHap0or1);
+  void countPairsInPairedReads(const String &sampleID,int whichHap,
+			       const Interval &read1,const Interval &read2);
   void parseHeader(const String &filename);
   void addToPairCount(const SimpleVariant &v1,const SimpleVariant &v2,int whichHap0or1);
   void getComboStats(int &allFourHaps,int &totalPairs);
@@ -133,7 +131,6 @@ void VcfIndex::initialize()
     if(j<numVar && allVariants[j].variant.getPos()<end) pointers[i]=j++; 
     else pointers[i]=-1;
   }
-  //cout<<pointers<<endl;
 }
 
 
@@ -186,7 +183,6 @@ int Application::main(int argc,char *argv[])
   for(int i=0 ; i<numFragments ; ++i) {
     // Generate fragment and read intervals
     String sample=samples[RandomNumber(numSamples)];
-    //Interval fragment=pickInterval(fragmentLen,chromLen);
     Interval fragment=pickInterval(fragmentLen,chrBegin,chrEnd);
     Interval read1=Interval(fragment.getBegin(),
 			    fragment.getBegin()+readLen);
@@ -196,8 +192,9 @@ int Application::main(int argc,char *argv[])
 
     // Count het sites in fragment and reads
     int fragHets, readHets;
-    countHets(sample,fragment,read1,read2,fragHets,readHets,whichHap);
-    os<<fragHets<<"\t"<<readHets<<endl;
+    //countHets(sample,fragment,read1,read2,fragHets,readHets,whichHap);
+    //os<<fragHets<<"\t"<<readHets<<endl;
+    countPairsInPairedReads(sample,whichHap,read1,read2);
   }
 
   // Collect statistics about combinations of alleles
@@ -254,26 +251,6 @@ void Application::variantsInInterval(const String &sampleID,const Interval &inte
 
 
 
-/*void Application::variantsInInterval(const String &sampleID,const Interval &interval,
-				     Vector<SimpleVariant> &into)
-{
-  Vector<VariantAndGenotypes> vars;
-  variantsInInterval(interval,vars);
-  for(Vector<VariantAndGenotypes>::iterator cur=vars.begin(), end=vars.end() ; 
-      cur!=end ; ++cur) {
-    const VariantAndGenotypes &vg=*cur;
-    const int index=sampleColumns[sampleID];
-    Genotype g=vg.genotypes[index];
-    if(!g.isHet()) continue;
-    Array1D<int> geno(2); geno[0]=g[0]; geno[1]=g[1];
-    SimpleVariant v(vg.variant.getID(),vg.variant.getChr(),vg.variant.getPos(),
-		    geno);
-    into.push_back(v);
-  }
-  }*/
-
-
-
 void Application::variantsInInterval(const Interval &interval,
 				     Vector<VariantAndGenotypes> &into)
 {
@@ -327,7 +304,6 @@ void Application::getComboStats(int &allFourHaps,int &totalPairs)
 	end=allelePairCounts.end() ; cur!=end ; ++cur) {
     pair<String,Array2D<int>*> p=*cur;
     const Array2D<int> &m=*p.second;
-    //cout<<p.first<<"\t"<<m[0][0]<<"\t"<<m[0][1]<<"\t"<<m[1][0]<<"\t"<<m[1][1]<<endl;
     int nonzero=0;
     for(int i=0 ; i<2 ; ++i) 
       for(int j=0 ; j<2 ; ++j)
@@ -354,7 +330,6 @@ void Application::parseHeader(const String &filename)
     for(int i=9 ; i<n ; ++i) {
       const String &sample=fields[i];
       sampleColumns[sample]=i-9;
-      //cout<<sample<<" assigned col "<<i<<endl;
     }
     pipe.close();
     return;
@@ -382,26 +357,6 @@ Interval Application::pickInterval(int len,int chrBegin,int chrEnd)
 
 
 
-
-/*void Application::getVariants(const String &sampleID,const Interval &interval,
-			      Vector<SimpleVariant> &variants)
-{
-  const String cmd=String("tabix ")+vcfFile+" "+chromName+":"
-    +String(interval.getBegin())+"-"+String(interval.getEnd());
-  Pipe pipe(cmd,"r");
-  while(!pipe.eof()) {
-    const String line=pipe.getline();
-    if(line.length()>0 && line[0]=='#') continue;
-    String ID; int pos; Array1D<int> genotype(2);
-    if(!parseVariant(sampleID,line,ID,pos,genotype)) continue;
-    SimpleVariant v(ID,chromName,pos,genotype);
-    variants.push_back(v);
-  }
-  pipe.close();
-  }*/
-
-
-
 void Application::addToPairCount(const SimpleVariant &v1,const SimpleVariant &v2,int whichHap)
 {
   String key=String(v1.pos)+" "+String(v2.pos);
@@ -418,37 +373,10 @@ void Application::addToPairCount(const SimpleVariant &v1,const SimpleVariant &v2
 
 
 
-/*bool Application::parseVariant(const String &sampleID,const String &line,
-			       String &ID,int &pos,Array1D<int> &genotype)
-{
-  Vector<String> fields;
-  line.getFields(fields,"\t");
-  if(fields.size()<9 || fields[6]!="PASS" || fields[8]!="GT") 
-    return false;
-  const int index=sampleColumns[sampleID];
-  String sGenotype=fields[index];
-
-  if(!genotypeRegex.match(sGenotype)) 
-    throw sGenotype+" : can't parse genotype";
-  const String gt1=genotypeRegex[1], gt2=genotypeRegex[2];
-  if(gt1.length()!=1 || gt2.length()!=1) return false;
-  const bool het=gt1!=gt2;
-  if(!het) return false;
-  genotype[0]=gt1.asInt(); genotype[1]=gt2.asInt();
-  if(genotype[0]>1 || genotype[1]>1) return false; // bi-allelic variants only
-
-  pos=fields[1].asInt()-1; // Convert 1-based coord to 0-based
-  ID=fields[2]; 
-  return true;
-  }*/
-
-
-
 int Application::countHets(const String &sampleID,const Interval &interval,
 			   int whichHap)
 {
   Vector<SimpleVariant> variants;
-  //getVariants(sampleID,interval,variants);
   variantsInInterval(sampleID,interval,variants);
   const int n=variants.size();
   for(int i=0 ; i<n-1 ; ++i)
@@ -461,7 +389,6 @@ int Application::countHets(const String &sampleID,const Interval &interval,
 int Application::countHetsRead(const String &sampleID,const Interval &interval)
 {
   Vector<SimpleVariant> variants;
-  //getVariants(sampleID,interval,variants);
   variantsInInterval(sampleID,interval,variants);
   return variants.size();
 }
@@ -479,5 +406,26 @@ void Application::countHets(const String &sampleID,const Interval &fragment,
     readHets=countHetsRead(sampleID,Interval(read1.getBegin(),read2.getEnd()));
 }
 
+
+
+// This function counts pairs of het sites in which one site occurs in one
+// read and the other occurs in the other read of the pair
+void Application::countPairsInPairedReads(const String &sampleID,int whichHap,
+					  const Interval &read1,
+					  const Interval &read2)
+{
+  Vector<SimpleVariant> vars1, vars2;
+  variantsInInterval(sampleID,read1,vars1);
+  variantsInInterval(sampleID,read2,vars2);
+  for(Vector<SimpleVariant>::iterator cur1=vars1.begin(), end1=vars1.end() ;
+      cur1!=end1 ; ++cur1) {
+    const SimpleVariant &v1=*cur1;
+    for(Vector<SimpleVariant>::iterator cur2=vars2.begin(), end2=vars2.end() ;
+	cur2!=end2 ; ++cur2) {
+      const SimpleVariant &v2=*cur2;
+      addToPairCount(v1,v2,whichHap);
+    }
+  }
+}
 
 
