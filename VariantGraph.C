@@ -66,7 +66,9 @@ void VariantGraph::phaseComponent(ConnectedComponent &component)
   VariantPhase phase=IN_PHASE;
   for(int i=0 ; i<N ; ++i) {
     Variant &v=component[i];
+    //cout<<"Setting component phase to "<<phase<<endl;
     v.setComponentPhase(phase);
+    v.setComponent(&component);
     switch(v.getPhase()) {
     case UNPHASED: 
       if(i!=N-1) throw "Unphased site in connected component";
@@ -91,37 +93,19 @@ void VariantGraph::assignReads()
     //cout<<"firstVar.v="<<firstVar.v<<endl;
     VariantPhase compPhase=firstVar.v->getComponentPhase();
     Allele allele=firstVar.allele; // REF or ALT
+
+    // Assign the read counts to the first variant in this connected component
+    ConnectedComponent &component=*firstVar.v->getComponent();
+    Variant &v=component[0];
     if(compPhase==IN_PHASE)
-      ++firstVar.v->getCount(allele);
+      ++v.getCount(allele);
     else
-      ++firstVar.v->getCount(swap(allele));
+      ++v.getCount(swap(allele));
   }
 }
 
 
-/*void VariantGraph::assignReads(Vector<ConnectedComponents> &components)
-{
-  for(Vector<ConnectedComponent>::iterator cur=components.begin(),
-	end=components.end() ; cur!=end ; ++cur)
-	assignReads(*cur);
-}*/
 
-
-
-/*void VariantGraph::assignReads(ConnectedComponent &component)
-{
-  for(Vector<ReadVariants>::iterator cur=component.reads.begin(), 
-	end=component.reads.end() ; cur!=end ; ++cur) {
-    ReadVariants &read=*cur;
-    VariantInRead &firstVar=read[0];
-    VariantPhase compPhase=firstVar.v->getComponentPhase();
-    Allele allele=firstVar.allele; // REF or ALT
-    if(compPhase==IN_PHASE)
-      ++firstVar.v->getCount(allele);
-    else
-      ++firstVar.v->getCount(swap(allele));
-  }
-  }*/
 
 
 

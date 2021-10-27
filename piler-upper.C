@@ -1,5 +1,5 @@
 /****************************************************************
- phd.C : Piled Higher & Deeper
+ piler-upper.C
 
  Copyright (C)2021 William H. Majoros (bmajoros@alumni.duke.edu)
  This is OPEN SOURCE SOFTWARE governed by the Gnu General Public
@@ -58,7 +58,6 @@ class Application {
   void findVariantsInRead(VariantGraph &,const SamRecord *,
 			  CigarAlignment &,ReadVariants &,
 			  const String &qualities);
-  void processGraph(VariantGraph &);
 public:
   Application();
   int main(int argc,char *argv[]);
@@ -109,11 +108,6 @@ int Application::main(int argc,char *argv[])
   GffReader gff(gffFile);
   SamReader sam(samFile);
 
-  // Load GFF
-  //cout<<"Loading GFF..."<<endl;
-  //Vector<GffGene> *genes=gff.loadGenes();
-  //cout<<"Done."<<endl;
-
   // Process the GFF file line-by-line
   String currentGene;
   GffFeature *buffer=NULL;
@@ -133,7 +127,6 @@ int Application::main(int argc,char *argv[])
 	Vector<Interval> exonIntervals;
 	int geneBegin, geneEnd;
 	getGeneLimits(exons,geneBegin,geneEnd);
-	//if(geneBegin<prevGeneEnd)
 	if(geneEnd<prevGeneBegin)
 	  throw RootException(String("GTF is not sorted: (")+prevGeneBegin+
 			      ","+prevGeneEnd+") overlaps ("+geneBegin+","+
@@ -148,17 +141,11 @@ int Application::main(int argc,char *argv[])
 	if(variants.size()==0) continue;
 	processSam(sam,variants,exonIntervals,geneBegin,geneEnd,
 		   substrate);
-	processGraph(variants);
-	continue;
       }
     }
     currentGene=feature->lookupExtra("gene_id");
-    /*if(feature->getFeatureType()!="exon" ||
-       pseudogeneRegex.search(feature->lookupExtra("gene_type")) ||
-       feature->lookupExtra("level")!="1")*/
     if(feature->getFeatureType()!="exon" ||
        pseudogeneRegex.search(feature->lookupExtra("gene_type")))
-      //feature->lookupExtra("transcript_support_level")!="1")
       { delete feature; continue; }
     exons.push_back(feature);
   }
@@ -449,100 +436,5 @@ void Application::installEdges(ReadVariants &read,const String &readID,
   }
 }
 
-
-
-void Application::processGraph(VariantGraph &G)
-{
-  // Count concordant/discordant edges
-  const int N=G.size();
-  int totalEdges=0;
-  for (int i=0 ; i<N-1 ; ++i) {
-    const Variant &v=G[i];
-    for(int j=0 ; j<2 ; ++j)
-      for(int k=0 ; k<2 ; ++k) 
-	totalEdges+=v.getEdges()[j][k];
-    if(v.nonzero()) ++numNonzero;
-    if(v.concordant()) ++numConcordant;
-  }
-  if(totalEdges<1) return;
-
-  /*  for (int i=0 ; i<N-1 ; ++i) {
-    const Variant &v=G[i];
-    if(v.concordant() || !v.nonzero()) continue;
-    cout<<"GRAPH:"<<endl;
-    cout<<v.getID()<<"\t"<<v.getEdges()<<endl;
-    const float prob=v.probInPhase(illumina);
-    cout<<"IN-PHASE: "<<prob<<"  ANTI-PHASED: "<<1-prob<<endl;
-    if(prob<MIN_PROB_CORRECT && 1-prob<MIN_PROB_CORRECT) 
-      throw String(v.getID())+" UNRESOLVED";
-      } */
-
-  // Phase the graph using the reads
-  G.phase(illumina,MIN_PROB_CORRECT);
-
-  // Get the connected components
-  Vector<ConnectedComponent> components;
-  G.getComponents(components,illumina,MIN_PROB_CORRECT);
-  /*for(int i=0 ; i<components.size() ; ++i) {
-    cout<<"Component "<<(i+1)<<": ";
-    VariantGraph &c=components[i];
-    for(int i=0 ; i<c.size() ; ++i) {
-      cout<<c[i].getID();
-      if(i+1<c.size())
-	switch(c[i].getPhase()) {
-	case UNPHASED: throw "unphased link in graph!";
-	case IN_PHASE: cout<<"-"; break;
-	case ANTI_PHASED: cout<<"\\"; break;
-	default: 
-	  throw String("unknown VariantPhase value ")+c[i].getPhase();
-	}
-    }
-    cout<<endl;
-    }*/
-
-  // Discard reads inconsistent with chosen phase
-  Vector<ReadVariants> &reads=G.getReads(), filtered;
-  for(Vector<ReadVariants>::iterator cur=reads.begin(), end=reads.end() ;
-      cur!=end ; ++cur) {
-    ReadVariants &read=*cur;
-    if(read.size()==0) continue;
-    if(read.consistentWithPhase()) filtered.push_back(read);
-  }
-  G.getReads()=filtered;
-
-  // Assign maternal/paternal haplotypes to connected components
-  G.phaseComponents(components);
-
-  // Assign reads to haplotypes
-  G.assignReads();
-
-  // Print out variant IDs and read counts for all components
-  int compNum=1;
-  for(Vector<ConnectedComponent>::iterator cur=components.begin(),
-	end=components.end() ; cur!=end ; ++cur) {
-    ConnectedComponent &comp=*cur;
-    Variant &v=comp[0];
-    cout<<"Component"<<compNum<<": "<<" ref="
-	<<v.getCount(REF)<<" alt="<<v.getCount(ALT)<<" ";
-    for(int i=0 ; i<comp.size() ; ++i) {
-      cout<<comp[i].getID();
-      if(i+1<comp.size())
-	switch(comp[i].getPhase()) {
-	case UNPHASED: throw "unphased link in graph!";
-	case IN_PHASE: cout<<"-"; break;
-	case ANTI_PHASED: cout<<"\\"; break;
-	default: 
-	  throw String("unknown VariantPhase value ")+comp[i].getPhase();
-	}
-    }
-    cout<<endl;
-    ++compNum;
-  }
-
-  // Print out, for each read, how many variants it contains
-  /*for(int i=0 ; i<filtered.size() ; ++i)
-    cout<<"\tread "<<i<<" spans "<<filtered[i].size()<<" variants"<<endl;*/
-
-}
 
 

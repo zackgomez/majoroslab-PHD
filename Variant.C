@@ -8,11 +8,13 @@
 #include <math.h>
 #include "BOOM/SumLogProbs.H"
 #include "Variant.H"
+#include "ConnectedComponent.H"
 using namespace std;
 using namespace BOOM;
 
 Variant::Variant()
-  : phase(UNPHASED)
+  : phase(UNPHASED), component(NULL), componentPhase(0),
+    probCorrect(2,2), edges(2,2), counts(2), genotype(2)
 {
   // ctor
 
@@ -23,12 +25,40 @@ Variant::Variant()
 
 Variant::Variant(String ID,int pos,char ref,char alt,int g[2])
   : ID(ID), pos(pos), ref(ref), alt(alt), edges(2,2),
-    probCorrect(2,2), phase(UNPHASED)
+    probCorrect(2,2), phase(UNPHASED), component(NULL),
+    componentPhase(0), counts(2), genotype(2)
 { 
   genotype[0]=g[0]; 
   genotype[1]=g[1]; 
   edges.setAllTo(0); 
   counts[0]=counts[1]=0;
+}
+
+
+
+const Variant &Variant::operator=(const Variant &x)
+{
+  ID=x.ID;
+  pos=x.pos;
+  ref=x.ref; alt=x.alt;
+  for(int i=0;i<2;++i) {counts[i]=x.counts[i]; genotype[i]=x.genotype[i];}
+  phase=x.phase; componentPhase=x.componentPhase;
+  component=component;
+  edges=x.edges;
+  probCorrect=x.probCorrect;
+  return x;
+  /*
+  String ID;
+  int pos;
+  char ref, alt;
+  int counts[2]; // indexed by Allele: REF=0, ALT=1
+  int genotype[2];
+  VariantPhase phase; // Relative to the *next* site!
+  VariantPhase componentPhase; // Relative to first site in connected comp
+  ConnectedComponent *component;
+  Array2D<Vector<pair<float,float> > > probCorrect; // P(base is correct)
+  Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
+   */
 }
 
 
@@ -126,3 +156,18 @@ void Variant::setPhase(const IlluminaQual &Q,float confidence)
   else if(1-P>=confidence) phase=ANTI_PHASED;
   else phase=UNPHASED;
 }
+
+
+
+void Variant::printOn(ostream &os) const
+{
+  os<<ID<<" "<<pos<<" ref="<<ref<<" alt="<<alt<<" counts=("
+    <<counts[0]<<","<<counts[1]<<"] genotype="<<genotype[0]<<"|"
+    <<genotype[1]<<" phase="<<phase<<" componentPhase="
+    <<componentPhase<<" component="<<component<<endl;
+  /*
+  Array2D<Vector<pair<float,float> > > probCorrect; // P(base is correct)
+  Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
+  */
+}
+

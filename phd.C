@@ -126,6 +126,7 @@ int Application::main(int argc,char *argv[])
     else { 
       feature=gff.nextFeature(); if(feature==NULL) break; 
       const String &geneID=feature->lookupExtra("gene_id");
+      //cout<<"gene="<<geneID<<" begin="<<feature->getBegin()<<" end="<<feature->getEnd()<<endl;
       if(currentGene!="" && geneID!=currentGene) {
 	buffer=feature;
 	if(exons.size()==0) continue;
@@ -233,7 +234,7 @@ void Application::processSam(SamReader &sam,VariantGraph &graph,
       { delete rec; ++readsWrongChrom; 
 	continue; } // ### ???
 
-    // This line is not quite correct:
+    // ### This line is not quite correct:
     if(refPos+rec->getSequence().getLength()<geneBegin)
       { /*cout<<"DISCARDED READ: "<<rec->getID()<<" "<<rec->getRefPos()
 	  <<" "<<rec->getRefPos()+rec->getSequence().getLength()<<endl;*/
@@ -354,7 +355,20 @@ void Application::filter(VariantGraph &graph,
   Vector<Variant> &variants=graph.getVariants();
   int n=variants.size();
   for(int i=0 ; i<n ; ++i) {
-    if(!find(variants[i],exons)) { variants.cut(i); --i; --n; }
+    //cout<<"i="<<i<<" variants.size="<<variants.size()<<endl;
+    //for(int j=0 ; j<n ; ++j) cout<<variants[j]<<endl;
+    if(!find(variants[i],exons)) {
+    //if(true) { // ### DEBUGGING
+      //cout<<"COPY"<<endl;
+      //Variant v; v=variants[i];
+      //cout<<"CUT"<<endl;
+      //for(int j=0 ; j<=i ; ++j) cout<<variants[j]<<endl;
+      variants.cut(i); // ### THIS IS CAUSING SEG FAULT
+      //variants[i].setUsed(false);
+      //--i; --n;
+      //cout<<"DONE CUT"<<endl;
+    }
+    else variants[i].setUsed(true);
   }
 }
 
