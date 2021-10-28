@@ -359,7 +359,7 @@ void Application::addEdges(const SamRecord *read,
   const CigarString &cigar=read->getCigar();
   CigarAlignment &alignment=*cigar.getAlignment();
   const int numNodes=graph.size();
-  ReadVariants readVariants;
+  ReadVariants readVariants(read->getID());
   findVariantsInRead(graph,read,alignment,readVariants,
 		     read->getQualityScores());
   if(readVariants.size()>0)
@@ -413,7 +413,7 @@ void Application::findVariantsInRead(VariantGraph &graph,
 void Application::installEdges(ReadVariants &read,const String &readID,
 			       const String &qualities,VariantGraph &G)
 {
-  G.getReads().push_back(read);
+  G.addRead(read);
   const int N=read.size();
   for(int i=0 ; i<N-1 ; ++i) {
     VariantInRead &thisVar=read[i], &nextVar=read[i+1];
@@ -457,12 +457,12 @@ void Application::processGraph(VariantGraph &G)
   G.getComponents(components,illumina,MIN_PROB_CORRECT);
 
   // Discard reads inconsistent with chosen phase
-  Vector<ReadVariants> &reads=G.getReads(), filtered;
-  for(Vector<ReadVariants>::iterator cur=reads.begin(), end=reads.end() ;
+  Vector<ReadVariants*> &reads=G.getReads(), filtered;
+  for(Vector<ReadVariants*>::iterator cur=reads.begin(), end=reads.end() ;
       cur!=end ; ++cur) {
-    ReadVariants &read=*cur;
-    if(read.size()==0) continue;
-    if(read.consistentWithPhase()) filtered.push_back(read);
+    ReadVariants *read=*cur;
+    if(read->size()==0) continue;
+    if(read->consistentWithPhase()) filtered.push_back(read);
   }
   G.getReads()=filtered;
 
@@ -478,8 +478,8 @@ void Application::processGraph(VariantGraph &G)
 	end=components.end() ; cur!=end ; ++cur) {
     ConnectedComponent &comp=*cur;
     Variant &v=comp[0];
-    cout<<"Component"<<compNum<<": "<<" ref="
-	<<v.getCount(REF)<<" alt="<<v.getCount(ALT)<<" ";
+    //cout<<"Component"<<compNum<<": "<<" ref="
+    //  <<v.getCount(REF)<<" alt="<<v.getCount(ALT)<<" ";
     for(int i=0 ; i<comp.size() ; ++i) {
       cout<<comp[i].getID();
       if(i+1<comp.size())
@@ -491,7 +491,7 @@ void Application::processGraph(VariantGraph &G)
 	  throw String("unknown VariantPhase value ")+comp[i].getPhase();
 	}
     }
-    cout<<endl;
+    cout<<"\tref="<<v.getCount(REF)<<"\talt="<<v.getCount(ALT)<<endl;
     ++compNum;
   }
 }

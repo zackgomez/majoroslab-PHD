@@ -1,7 +1,7 @@
 CC		= g++
 DEBUG		= -g
 OPTIMIZE	= -O
-CFLAGS		= $(OPTIMIZE) -fpermissive -w
+CFLAGS		= $(OPTIMIZE) -fpermissive -w -Werror=return-type
 LDFLAGS		= $(OPTIMIZE)
 BOOM		= BOOM
 OBJ		= obj
@@ -18,6 +18,7 @@ $(OBJ)/phd.o:\
 		phd.C
 #---------------------------------------------------------
 phd: \
+		$(OBJ)/ReadPairManager.o \
 		$(OBJ)/ReadVariants.o \
 		$(OBJ)/ConnectedComponent.o \
 		$(OBJ)/Allele.o \
@@ -29,6 +30,7 @@ phd: \
 		$(OBJ)/VariantInRead.o \
 		$(OBJ)/phd.o
 	$(CC) $(LDFLAGS) -o phd \
+		$(OBJ)/ReadPairManager.o \
 		$(OBJ)/ReadVariants.o \
 		$(OBJ)/ConnectedComponent.o \
 		$(OBJ)/Allele.o \

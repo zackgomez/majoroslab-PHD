@@ -15,6 +15,32 @@ VariantGraph::VariantGraph()
 }
 
 
+
+VariantGraph::~VariantGraph()
+{
+  deleteReads();
+}
+
+
+
+void VariantGraph::deleteReads()
+{
+  for(Vector<ReadVariants*>::iterator cur=reads.begin(), end=reads.end() ;
+      cur!=end ; ++cur)
+    delete *cur;
+}
+
+
+
+void VariantGraph::addRead(const ReadVariants &read)
+{
+  ReadVariants *r=new ReadVariants(read);
+  reads.push_back(r);
+  readPairMgr.Register(r);
+}
+
+
+
 Vector<Variant> &VariantGraph::getVariants()
 {
   return variants;
@@ -83,10 +109,17 @@ void VariantGraph::phaseComponent(ConnectedComponent &component)
 
 void VariantGraph::assignReads()
 {
-  for(Vector<ReadVariants>::iterator cur=reads.begin(), end=reads.end() ; 
+  for(Vector<ReadVariants*>::iterator cur=reads.begin(), end=reads.end() ; 
       cur!=end ; ++cur) {
-    ReadVariants &read=*cur;
-    if(read.size()<1) return;
+    ReadVariants &read=**cur;
+
+    // This block ensures that we only count one read of a pair toward
+    // allele counts:
+    if(!read.hasVariants()) return;
+    if(read.shouldSkip()) return; // This read is marked to be skipped
+    ReadVariants *mate=read.getMate();
+    if(mate) mate->skip(); // Mark the mate, so it gets skipped
+    
     VariantInRead &firstVar=read[0];
     VariantPhase compPhase=firstVar.v->getComponentPhase();
     Allele allele=firstVar.allele; // REF or ALT

@@ -12,12 +12,14 @@
 #include "Variant.H"
 #include "ReadVariants.H"
 #include "ConnectedComponent.H"
+#include "ReadPairManager.H"
 using namespace std;
 using namespace BOOM;
 
 class VariantGraph {
 public:
   VariantGraph();
+  virtual ~VariantGraph();
   Vector<Variant> &getVariants();
   void phase(const IlluminaQual &,float minQual);
   void getComponents(Vector<ConnectedComponent> &into,
@@ -28,15 +30,18 @@ public:
   Variant &operator[](int i) { return variants[i]; }
   Vector<Variant>::iterator begin() { return variants.begin(); }
   Vector<Variant>::iterator end() { return variants.end(); }
-  Vector<ReadVariants> &getReads() { return reads; }
+  Vector<ReadVariants*> &getReads() { return reads; }
+  void addRead(const ReadVariants &);
   void phaseComponents(Vector<ConnectedComponent> &);
   //void assignReads(Vector<ConnectedComponent> &);
   void assignReads();
 protected:
+  void deleteReads();
   void phaseComponent(ConnectedComponent &);
   //void assignReads(ConnectedComponent &);
   Vector<Variant> variants;
-  Vector<ReadVariants> reads;
+  Vector<ReadVariants*> reads;
+  ReadPairManager readPairMgr;
 };
 
 

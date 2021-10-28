@@ -10,8 +10,24 @@ using namespace std;
 using namespace BOOM;
 
 ReadVariants::ReadVariants()
+  : firstOfPair(false), mate(NULL), wantToSkip(false)
 {
   // ctor
+}
+
+
+
+ReadVariants::ReadVariants(const String &id)
+  : id(id), firstOfPair(false), mate(NULL), wantToSkip(false)
+{
+  // ctor
+}
+
+
+
+void ReadVariants::setFirstOfPair(bool f)
+{
+  firstOfPair=f;
 }
 
 
