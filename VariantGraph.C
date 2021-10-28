@@ -113,13 +113,18 @@ void VariantGraph::assignReads()
       cur!=end ; ++cur) {
     ReadVariants &read=**cur;
 
+    // ### DEBUGGING:
+    /*cout<<"### "<<read.getID()<<" :";
+    for(int i=0 ; i<read.size() ; ++i) cout<<" "<<read[i].v->getID();
+    cout<<endl;*/
+    
     // This block ensures that we only count one read of a pair toward
     // allele counts:
-    if(!read.hasVariants()) return;
-    if(read.shouldSkip()) return; // This read is marked to be skipped
+    if(!read.hasVariants()) continue;
+    if(read.shouldSkip()) continue; // This read is marked to be skipped
     ReadVariants *mate=read.getMate();
     if(mate) mate->skip(); // Mark the mate, so it gets skipped
-    
+
     VariantInRead &firstVar=read[0];
     VariantPhase compPhase=firstVar.v->getComponentPhase();
     Allele allele=firstVar.allele; // REF or ALT

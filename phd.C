@@ -58,7 +58,7 @@ class Application {
   void findVariantsInRead(VariantGraph &,const SamRecord *,
 			  CigarAlignment &,ReadVariants &,
 			  const String &qualities);
-  void processGraph(VariantGraph &);
+  void processGraph(VariantGraph &,const String &geneID);
 public:
   Application();
   int main(int argc,char *argv[]);
@@ -136,13 +136,15 @@ int Application::main(int argc,char *argv[])
 	String substrate;
 	processExons(exons,exonIntervals,variants,substrate);
 	if(substrate!=chrom)
-	  { cout<<"CHROM "<<substrate<<endl; chrom=substrate; 
+	  { /*cout<<"CHROM "<<substrate<<endl;*/ chrom=substrate; 
 	    seenPositions.clear(); }
 	deleteExons(exons);
 	if(variants.size()==0) continue;
+	//cout<<"GENE "<<currentGene
+	//    <<"==================================================="<<endl;
 	processSam(sam,variants,exonIntervals,geneBegin,geneEnd,
 		   substrate);
-	processGraph(variants);
+	processGraph(variants,currentGene);
 	continue;
       }
     }
@@ -393,12 +395,12 @@ void Application::findVariantsInRead(VariantGraph &graph,
 	if(c==v.getRef()) allele=REF;
 	else if(c==v.getAlt()) allele=ALT;
 	else {
-	  const float pError=illumina.charToErrorProb(qual[readPos]);
+	  /* const float pError=illumina.charToErrorProb(qual[readPos]);
 	  cout<<read->getID()<<" ALLELE MISMATCH P(error)="<<pError
 	      <<"="<<illumina.charToPhred(qual[readPos])<<"="
 	      <<qual[readPos]<<" "<<c<<" NOT "<<v.getRef()
 	      <<" NOR "<<v.getAlt()<<" VAR="<<v.getID()
-	      <<" READ POS="<<readPos<<endl;
+	      <<" READ POS="<<readPos<<endl; */
 	  continue;
 	}
 	const float p=1-illumina.charToErrorProb(qualities[readPos]);
@@ -434,7 +436,7 @@ void Application::installEdges(ReadVariants &read,const String &readID,
 
 
 
-void Application::processGraph(VariantGraph &G)
+void Application::processGraph(VariantGraph &G,const String &geneID)
 {
   // Count concordant/discordant edges
   const int N=G.size();
@@ -455,7 +457,8 @@ void Application::processGraph(VariantGraph &G)
   // Get the connected components
   Vector<ConnectedComponent> components;
   G.getComponents(components,illumina,MIN_PROB_CORRECT);
-
+  if(components.size()==0) return;
+  
   // Discard reads inconsistent with chosen phase
   Vector<ReadVariants*> &reads=G.getReads(), filtered;
   for(Vector<ReadVariants*>::iterator cur=reads.begin(), end=reads.end() ;
@@ -478,8 +481,9 @@ void Application::processGraph(VariantGraph &G)
 	end=components.end() ; cur!=end ; ++cur) {
     ConnectedComponent &comp=*cur;
     Variant &v=comp[0];
-    //cout<<"Component"<<compNum<<": "<<" ref="
-    //  <<v.getCount(REF)<<" alt="<<v.getCount(ALT)<<" ";
+    const int ref=v.getCount(REF), alt=v.getCount(ALT);
+    if(ref+alt==0) continue;
+    cout<<geneID<<"\t"<<comp[0].getID()<<"\t"<<ref<<"\t"<<alt<<"\t";
     for(int i=0 ; i<comp.size() ; ++i) {
       cout<<comp[i].getID();
       if(i+1<comp.size())
@@ -491,7 +495,7 @@ void Application::processGraph(VariantGraph &G)
 	  throw String("unknown VariantPhase value ")+comp[i].getPhase();
 	}
     }
-    cout<<"\tref="<<v.getCount(REF)<<"\talt="<<v.getCount(ALT)<<endl;
+    cout<<endl;
     ++compNum;
   }
 }
