@@ -66,7 +66,6 @@ void VariantGraph::phaseComponent(ConnectedComponent &component)
   VariantPhase phase=IN_PHASE;
   for(int i=0 ; i<N ; ++i) {
     Variant &v=component[i];
-    //cout<<"Setting component phase to "<<phase<<endl;
     v.setComponentPhase(phase);
     v.setComponent(&component);
     switch(v.getPhase()) {
@@ -88,9 +87,7 @@ void VariantGraph::assignReads()
       cur!=end ; ++cur) {
     ReadVariants &read=*cur;
     if(read.size()<1) return;
-    //cout<<read.size()<<endl;
     VariantInRead &firstVar=read[0];
-    //cout<<"firstVar.v="<<firstVar.v<<endl;
     VariantPhase compPhase=firstVar.v->getComponentPhase();
     Allele allele=firstVar.allele; // REF or ALT
 

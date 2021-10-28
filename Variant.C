@@ -35,7 +35,7 @@ Variant::Variant(String ID,int pos,char ref,char alt,int g[2])
 }
 
 
-
+/*
 const Variant &Variant::operator=(const Variant &x)
 {
   ID=x.ID;
@@ -47,20 +47,8 @@ const Variant &Variant::operator=(const Variant &x)
   edges=x.edges;
   probCorrect=x.probCorrect;
   return x;
-  /*
-  String ID;
-  int pos;
-  char ref, alt;
-  int counts[2]; // indexed by Allele: REF=0, ALT=1
-  int genotype[2];
-  VariantPhase phase; // Relative to the *next* site!
-  VariantPhase componentPhase; // Relative to first site in connected comp
-  ConnectedComponent *component;
-  Array2D<Vector<pair<float,float> > > probCorrect; // P(base is correct)
-  Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
-   */
 }
-
+*/
 
 
 bool Variant::concordant() const
@@ -101,7 +89,6 @@ float Variant::logLikInPhase(const IlluminaQual &Q)
 {
   const float logLik=logProd(0,0,Q)+logProd(1,1,Q)+
     logProdSwapped(0,1,Q)+logProdSwapped(1,0,Q);
-  //cout<<"  LOG LIK IN PHASE = "<<logLik<<endl;
   return logLik;
 }
 
@@ -111,7 +98,6 @@ float Variant::logLikAntiPhased(const IlluminaQual &Q)
 {
   const float logLik=logProd(0,1,Q)+logProd(1,0,Q)+
     logProdSwapped(0,0,Q)+logProdSwapped(1,1,Q);
-  //cout<<"  LOG LIK ANTI-PHASED = "<<logLik<<endl;
   return logLik;
 }
 
@@ -125,9 +111,7 @@ float Variant::logProd(int i,int j,const IlluminaQual &illumina)
 	end=pairs.end() ; cur!=end ; ++cur) {
     const pair<float,float> &p=*cur;
     sum+=log(p.first*p.second+(1-p.first)*(1-p.second));
-    //cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
   }
-  //cout<<"\t\tLOGPROD="<<sum<<endl;
   return sum;
 }
 
@@ -141,9 +125,7 @@ float Variant::logProdSwapped(int i,int j,const IlluminaQual &illumina)
 	end=pairs.end() ; cur!=end ; ++cur) {
     const pair<float,float> &p=*cur;
     sum+=log(p.first*(1-p.second)+(1-p.first)*p.second);
-    //cout<<"\t\t\t("<<i<<","<<j<<") first="<<p.first<<" second="<<p.second<<endl;
   }
-  //cout<<"\t\tLOGPROD SWAPPED="<<sum<<endl;
   return sum;
 }
 
@@ -165,9 +147,5 @@ void Variant::printOn(ostream &os) const
     <<counts[0]<<","<<counts[1]<<"] genotype="<<genotype[0]<<"|"
     <<genotype[1]<<" phase="<<phase<<" componentPhase="
     <<componentPhase<<" component="<<component<<endl;
-  /*
-  Array2D<Vector<pair<float,float> > > probCorrect; // P(base is correct)
-  Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
-  */
 }
 

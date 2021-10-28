@@ -22,7 +22,7 @@ class Variant {
 public:
   Variant();
   Variant(String ID,int pos,char ref,char alt,int g[2]);
-  const Variant &operator=(const Variant &);
+  //const Variant &operator=(const Variant &);
   bool concordant() const;
   bool nonzero() const;
   float probInPhase(const IlluminaQual &);
@@ -43,8 +43,6 @@ public:
   Array2D<int> &getEdges() { return edges; }
   int &getCount(int allele) { return counts[allele]; }
   void printOn(ostream &os) const;
-  //void setUsed(bool u) { used=u; }
-  //bool isUsed() const { return used; }
 protected:
   String ID;
   int pos;
@@ -56,7 +54,6 @@ protected:
   ConnectedComponent *component;
   Array2D<Vector<pair<float,float> > > probCorrect; // P(base is correct)
   Array2D<int> edges; // Edges to next variant; 0=ref, 1=alt
-  //bool used;
   float logLikInPhase(const IlluminaQual &);
   float logLikAntiPhased(const IlluminaQual &);
   float logProd(int i,int j,const IlluminaQual &);

@@ -15,9 +15,6 @@ SamReader::SamReader(const String &filename)
 {
   // ctor
 
-  //if(Regex::search("\\\\.gz$",filename))
-  //  throw "Gzipped files are not supported in SamReader at this time";
-  //fh.open(filename,"r");
   fh=gzRegex.search(filename) ?
     new GunzipPipe(filename) : new File(filename);
   headerChars+=('@'); 

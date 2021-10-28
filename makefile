@@ -155,3 +155,11 @@ count-combinations-in-fragments: \
 		$(OBJ)/count-combinations-in-fragments.o \
 		$(LIBS)
 #---------------------------------------------
+
+#--------------------------------------------------------
+$(OBJ)/ReadPairManager.o:\
+		ReadPairManager.C\
+		ReadPairManager.H
+	$(CC) $(CFLAGS) -o $(OBJ)/ReadPairManager.o -c \
+		ReadPairManager.C
+#---------------------------------------------------------

@@ -109,11 +109,6 @@ int Application::main(int argc,char *argv[])
   GffReader gff(gffFile);
   SamReader sam(samFile);
 
-  // Load GFF
-  //cout<<"Loading GFF..."<<endl;
-  //Vector<GffGene> *genes=gff.loadGenes();
-  //cout<<"Done."<<endl;
-
   // Process the GFF file line-by-line
   String currentGene;
   GffFeature *buffer=NULL;
@@ -126,7 +121,6 @@ int Application::main(int argc,char *argv[])
     else { 
       feature=gff.nextFeature(); if(feature==NULL) break; 
       const String &geneID=feature->lookupExtra("gene_id");
-      //cout<<"gene="<<geneID<<" begin="<<feature->getBegin()<<" end="<<feature->getEnd()<<endl;
       if(currentGene!="" && geneID!=currentGene) {
 	buffer=feature;
 	if(exons.size()==0) continue;
@@ -134,7 +128,6 @@ int Application::main(int argc,char *argv[])
 	Vector<Interval> exonIntervals;
 	int geneBegin, geneEnd;
 	getGeneLimits(exons,geneBegin,geneEnd);
-	//if(geneBegin<prevGeneEnd)
 	if(geneEnd<prevGeneBegin)
 	  throw RootException(String("GTF is not sorted: (")+prevGeneBegin+
 			      ","+prevGeneEnd+") overlaps ("+geneBegin+","+
@@ -154,12 +147,8 @@ int Application::main(int argc,char *argv[])
       }
     }
     currentGene=feature->lookupExtra("gene_id");
-    /*if(feature->getFeatureType()!="exon" ||
-       pseudogeneRegex.search(feature->lookupExtra("gene_type")) ||
-       feature->lookupExtra("level")!="1")*/
     if(feature->getFeatureType()!="exon" ||
        pseudogeneRegex.search(feature->lookupExtra("gene_type")))
-      //feature->lookupExtra("transcript_support_level")!="1")
       { delete feature; continue; }
     exons.push_back(feature);
   }
@@ -260,13 +249,6 @@ void Application::processExons(Vector<GffFeature*> &exons,
   substrate=chrRegex.substitute(substrate,"");
   getIntervals(exons,intervals);
   getVariants(substrate,intervals,graph);
-  /*
-  for(Vector<Variant>::iterator cur=variants.begin(), end=variants.end() ;
-      cur!=end ; ++cur) {
-    Variant v=*cur;
-    //cout<<v.ID<<"\t"<<v.pos<<"\t"<<v.ref<<"\t"<<v.alt<<"\t"
-    //	<<v.genotype[0]<<"|"<<v.genotype[1]<<endl;
-    }*/
 }
 
 
@@ -354,22 +336,9 @@ void Application::filter(VariantGraph &graph,
 {
   Vector<Variant> &variants=graph.getVariants();
   int n=variants.size();
-  for(int i=0 ; i<n ; ++i) {
-    //cout<<"i="<<i<<" variants.size="<<variants.size()<<endl;
-    //for(int j=0 ; j<n ; ++j) cout<<variants[j]<<endl;
-    if(!find(variants[i],exons)) {
-    //if(true) { // ### DEBUGGING
-      //cout<<"COPY"<<endl;
-      //Variant v; v=variants[i];
-      //cout<<"CUT"<<endl;
-      //for(int j=0 ; j<=i ; ++j) cout<<variants[j]<<endl;
-      variants.cut(i); // ### THIS IS CAUSING SEG FAULT
-      //variants[i].setUsed(false);
-      //--i; --n;
-      //cout<<"DONE CUT"<<endl;
-    }
-    else variants[i].setUsed(true);
-  }
+  for(int i=0 ; i<n ; ++i)
+    if(!find(variants[i],exons))
+      { variants.cut(i); --i; --n; }
 }
 
 
@@ -480,39 +449,12 @@ void Application::processGraph(VariantGraph &G)
   }
   if(totalEdges<1) return;
 
-  /*  for (int i=0 ; i<N-1 ; ++i) {
-    const Variant &v=G[i];
-    if(v.concordant() || !v.nonzero()) continue;
-    cout<<"GRAPH:"<<endl;
-    cout<<v.getID()<<"\t"<<v.getEdges()<<endl;
-    const float prob=v.probInPhase(illumina);
-    cout<<"IN-PHASE: "<<prob<<"  ANTI-PHASED: "<<1-prob<<endl;
-    if(prob<MIN_PROB_CORRECT && 1-prob<MIN_PROB_CORRECT) 
-      throw String(v.getID())+" UNRESOLVED";
-      } */
-
   // Phase the graph using the reads
   G.phase(illumina,MIN_PROB_CORRECT);
 
   // Get the connected components
   Vector<ConnectedComponent> components;
   G.getComponents(components,illumina,MIN_PROB_CORRECT);
-  /*for(int i=0 ; i<components.size() ; ++i) {
-    cout<<"Component "<<(i+1)<<": ";
-    VariantGraph &c=components[i];
-    for(int i=0 ; i<c.size() ; ++i) {
-      cout<<c[i].getID();
-      if(i+1<c.size())
-	switch(c[i].getPhase()) {
-	case UNPHASED: throw "unphased link in graph!";
-	case IN_PHASE: cout<<"-"; break;
-	case ANTI_PHASED: cout<<"\\"; break;
-	default: 
-	  throw String("unknown VariantPhase value ")+c[i].getPhase();
-	}
-    }
-    cout<<endl;
-    }*/
 
   // Discard reads inconsistent with chosen phase
   Vector<ReadVariants> &reads=G.getReads(), filtered;
@@ -552,11 +494,6 @@ void Application::processGraph(VariantGraph &G)
     cout<<endl;
     ++compNum;
   }
-
-  // Print out, for each read, how many variants it contains
-  /*for(int i=0 ; i<filtered.size() ; ++i)
-    cout<<"\tread "<<i<<" spans "<<filtered[i].size()<<" variants"<<endl;*/
-
 }
 
 
