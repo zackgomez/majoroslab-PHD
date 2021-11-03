@@ -18,23 +18,31 @@
 #include "BOOM/Array2D.H"
 #include "BOOM/IlluminaQual.H"
 #include "BOOM/SumLogProbs.H"
+#include "BOOM/ConfigFile.H"
 #include "SamReader.H"
+#include "SamTabix.H"
 #include "VariantGraph.H"
 #include "VariantInRead.H"
 using namespace std;
 using namespace BOOM;
 
-const float MIN_PROB_CORRECT=0.8;
-const bool DEDUPLICATE=true;
+/****************************************************************
+ TO DO:
+ * Some reads extend past annotated transcript; variants outside the 
+   annotated transcript are discarded, but they could be used
+ ****************************************************************/
 
 class Application {
+  String tabix;
+  float MIN_PROB_CORRECT;
+  bool DEDUPLICATE;
   IlluminaQual illumina;
   char MIN_QUAL; // This is the encoding charater, NOT the integer value!
   Regex pseudogeneRegex;
   Regex chrRegex;
   String vcfFile;
   int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
-  int numConcordant, numNonzero;
+  int numConcordant, numNonzero, duplicatesRemoved;
   Set<int> seenPositions;
   void processExons(Vector<GffFeature*> &exons,
 		    Vector<Interval> &intervals,VariantGraph &,
@@ -52,7 +60,7 @@ class Application {
   int getLastPos(const VariantGraph &);
   int getLastPos(const Vector<Interval> &exons);
   void getGeneLimits(const Vector<GffFeature*> &exons,int &begin,int &end);
-  void addEdges(const SamRecord *read,VariantGraph &graph);
+  bool addEdges(const SamRecord *read,VariantGraph &graph);
   void installEdges(ReadVariants &,const String &readID,
 		    const String &qualities,VariantGraph &);
   void findVariantsInRead(VariantGraph &,const SamRecord *,
@@ -86,7 +94,7 @@ int main(int argc,char *argv[])
 Application::Application()
   : pseudogeneRegex("pseudogene"), chrRegex("chr"),
     readsSeen(0), readsDiscarded(0), readsUnmapped(0), readsWrongChrom(0),
-    numConcordant(0), numNonzero(0)
+    numConcordant(0), numNonzero(0), duplicatesRemoved(0)
 {
   // ctor
 }
@@ -98,16 +106,21 @@ int Application::main(int argc,char *argv[])
   // Process command line
   CommandLine cmd(argc,argv,"");
   if(cmd.numArgs()!=4)
-    throw String("phd <indexed.vcf.gz> <sorted.gff> <in.sam> <min-qual>");
-  vcfFile=cmd.arg(0);
-  const String gffFile=cmd.arg(1);
-  const String samFile=cmd.arg(2);
-  const int minQual=cmd.arg(3).asInt();
-  MIN_QUAL=illumina.phredToChar(minQual);
+    throw String("phd <config> <indexed.vcf.gz> <sorted.gff> <in.sam>");
+  const String configFile=cmd.arg(0);
+  vcfFile=cmd.arg(1);
+  const String gffFile=cmd.arg(2);
+  const String samFile=cmd.arg(3);
 
+  // Load parameters from config file
+  ConfigFile config(configFile);
+  tabix=config.lookupOrDie("tabix");
+  MIN_PROB_CORRECT=config.getFloatOrDie("min-phasing-probability");
+  DEDUPLICATE=config.getBoolOrDie("deduplicate");
+  MIN_QUAL=illumina.phredToChar(config.getIntOrDie("min-base-quality"));
+  
   // Open input files
   GffReader gff(gffFile);
-  SamReader sam(samFile);
 
   // Process the GFF file line-by-line
   String currentGene;
@@ -140,10 +153,12 @@ int Application::main(int argc,char *argv[])
 	    seenPositions.clear(); }
 	deleteExons(exons);
 	if(variants.size()==0) continue;
-	//cout<<"GENE "<<currentGene
+	//	cout<<"GENE "<<currentGene<<" "<<geneBegin<<"-"<<geneEnd<<" "
 	//    <<"==================================================="<<endl;
-	processSam(sam,variants,exonIntervals,geneBegin,geneEnd,
+	SamTabix tabix("tabix",samFile,String("chr")+chrom,geneBegin,geneEnd);
+	processSam(tabix,variants,exonIntervals,geneBegin,geneEnd,
 		   substrate);
+	//cout<<"variants.size="<<variants.size()<<" reads.size="<<variants.getReads().size()<<endl;
 	processGraph(variants,currentGene);
 	continue;
       }
@@ -154,10 +169,11 @@ int Application::main(int argc,char *argv[])
       { delete feature; continue; }
     exons.push_back(feature);
   }
-  cout<<readsSeen<<" reads seen, "<<readsDiscarded<<" discarded, "
+  cerr<<readsSeen<<" reads seen, "<<readsDiscarded<<" discarded, "
       <<readsUnmapped<<" unmapped"<<endl;
-  cout<<numConcordant<<" concordant edges out of "<<numNonzero<<" nonzero"
+  cerr<<numConcordant<<" concordant edges out of "<<numNonzero<<" nonzero"
       <<endl;
+  cerr<<duplicatesRemoved<<" duplicate reads removed"<<endl;
   return 0;
 }
 
@@ -205,37 +221,50 @@ int Application::getLastPos(const Vector<Interval> &exons)
 }
 
 
+
 void Application::processSam(SamReader &sam,VariantGraph &graph,
 			     Vector<Interval> &exons,int geneBegin,
 			     int geneEnd,const String &substrate)
 {
   static SamRecord *buffer=NULL;
+  //cout<<substrate<<":"<<geneBegin<<"-"<<geneEnd<<endl;
+  int debug=0;
   while(true) {
     SamRecord *rec;
     if(buffer) { rec=buffer; buffer=NULL; }
     else { rec=sam.nextRecord(); if(rec) ++readsSeen; }
     if(!rec) break;
-    if(rec->flag_unmapped()) { delete rec; ++readsUnmapped; continue; }
+    if(rec->flag_unmapped()) {
+      //cout<<"unmapped"<<endl;
+      delete rec; ++readsUnmapped; continue; }
     const int refPos=rec->getRefPos();
-    if(seenPositions.isMember(refPos)) { delete rec; continue; }
-    seenPositions+=refPos;
+    ++debug;
+    
+    //if(seenPositions.isMember(refPos)) { delete rec; continue; }
+    //seenPositions+=refPos;
+    if(DEDUPLICATE && rec->flag_PCRduplicate()) {
+      //cout<<"duplicate"<<endl;
+      delete rec; ++duplicatesRemoved; continue; }
     String readSubstrate=rec->getRefName();
     readSubstrate=chrRegex.substitute(readSubstrate,"");
     if(readSubstrate<substrate) 
-      { delete rec; ++readsWrongChrom; 
-	continue; } // ### ???
+      { delete rec;
+	//cout<<"wrong chrom"<<endl;
+	++readsWrongChrom; continue; } // ### ???
 
-    // ### This line is not quite correct:
-    if(refPos+rec->getSequence().getLength()<geneBegin)
-      { /*cout<<"DISCARDED READ: "<<rec->getID()<<" "<<rec->getRefPos()
-	  <<" "<<rec->getRefPos()+rec->getSequence().getLength()<<endl;*/
-	delete rec; ++readsDiscarded; 
-	continue; }
+    if(refPos+rec->getCigar().genomicSpan()<geneBegin) {
+      //cout<<"discarding "<<rec->getID()<<" @ "<<refPos<<"+"<<rec->getSequence().getLength()<<" < "<<geneBegin<<endl;
+	delete rec; ++readsDiscarded; continue; }
 
-    if(refPos>geneEnd) { buffer=rec; break;}
-    addEdges(rec,graph);
+    if(refPos>geneEnd) {
+      //cout<<"after gene"<<endl;
+      buffer=rec; break;}
+    const bool containsVariants=addEdges(rec,graph);
+    //if(!containsVariants) cout<<"no variants"<<endl;
+    //else cout<<"CONTAINS VARIANTS"<<endl;
     delete rec;
   }
+  //cout<<debug<<" records retrieved by tabix"<<endl;
 }
 
 
@@ -355,7 +384,7 @@ bool Application::find(const Variant &v,const Vector<Interval> &exons)
 
 
 
-void Application::addEdges(const SamRecord *read,
+bool Application::addEdges(const SamRecord *read,
 			   VariantGraph &graph)
 {
   const CigarString &cigar=read->getCigar();
@@ -364,10 +393,14 @@ void Application::addEdges(const SamRecord *read,
   ReadVariants readVariants(read->getID());
   findVariantsInRead(graph,read,alignment,readVariants,
 		     read->getQualityScores());
-  if(readVariants.size()>0)
+  bool ret=false;
+  if(readVariants.size()>0) {
     installEdges(readVariants,read->getID(),read->getQualityScores(),
 		 graph);
+    ret=true;
+  }
   delete &alignment;
+  return ret; // = whether variants were found in the read
 }
 
 
@@ -449,7 +482,7 @@ void Application::processGraph(VariantGraph &G,const String &geneID)
     if(v.nonzero()) ++numNonzero;
     if(v.concordant()) ++numConcordant;
   }
-  if(totalEdges<1) return;
+  //if(totalEdges<1) return;
 
   // Phase the graph using the reads
   G.phase(illumina,MIN_PROB_CORRECT);
@@ -458,6 +491,8 @@ void Application::processGraph(VariantGraph &G,const String &geneID)
   Vector<ConnectedComponent> components;
   G.getComponents(components,illumina,MIN_PROB_CORRECT);
   if(components.size()==0) return;
+
+  //cout<<"Graph has "<<G.size()<<" variants before consistency checking"<<endl;
   
   // Discard reads inconsistent with chosen phase
   Vector<ReadVariants*> &reads=G.getReads(), filtered;

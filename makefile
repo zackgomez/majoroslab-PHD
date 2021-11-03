@@ -24,6 +24,7 @@ phd: \
 		$(OBJ)/Allele.o \
 		$(OBJ)/Phase.o \
 		$(OBJ)/SamReader.o \
+		$(OBJ)/SamTabix.o \
 		$(OBJ)/SamRecord.o \
 		$(OBJ)/Variant.o \
 		$(OBJ)/VariantGraph.o \
@@ -36,6 +37,7 @@ phd: \
 		$(OBJ)/Allele.o \
 		$(OBJ)/Phase.o \
 		$(OBJ)/SamReader.o \
+		$(OBJ)/SamTabix.o \
 		$(OBJ)/SamRecord.o \
 		$(OBJ)/Variant.o \
 		$(OBJ)/VariantGraph.o \
@@ -156,12 +158,16 @@ count-combinations-in-fragments: \
 	$(CC) $(LDFLAGS) -o count-combinations-in-fragments \
 		$(OBJ)/count-combinations-in-fragments.o \
 		$(LIBS)
-#---------------------------------------------
-
 #--------------------------------------------------------
 $(OBJ)/ReadPairManager.o:\
 		ReadPairManager.C\
 		ReadPairManager.H
 	$(CC) $(CFLAGS) -o $(OBJ)/ReadPairManager.o -c \
 		ReadPairManager.C
+#---------------------------------------------------------
+$(OBJ)/SamTabix.o:\
+		SamTabix.C\
+		SamTabix.H
+	$(CC) $(CFLAGS) -o $(OBJ)/SamTabix.o -c \
+		SamTabix.C
 #---------------------------------------------------------

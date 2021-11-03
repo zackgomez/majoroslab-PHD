@@ -10,6 +10,14 @@
 using namespace std;
 using namespace BOOM;
 
+SamReader::SamReader()
+  : gzRegex("\\.gz$"), fh(NULL)
+{
+  // default ctor
+}
+
+
+
 SamReader::SamReader(const String &filename)
   : gzRegex("\\.gz$")
 {
