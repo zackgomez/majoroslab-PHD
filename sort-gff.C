@@ -52,7 +52,7 @@ int Application::main(int argc,char *argv[])
   // Process command line
   CommandLine cmd(argc,argv,"");
   if(cmd.numArgs()!=1)
-    throw String("sort-gff <ingff>");
+    throw String("sort-gff <in.gff>");
   const String filename=cmd.arg(0);
 
   // Open input file
@@ -85,4 +85,6 @@ int Application::main(int argc,char *argv[])
       trans.toGff(cout);
     }
   }
+  cerr<<"Done."<<endl;
+  return 0;
 }

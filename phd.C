@@ -26,6 +26,8 @@
 using namespace std;
 using namespace BOOM;
 
+bool DEBUG=true;
+
 /****************************************************************
  TO DO:
  * Some reads extend past annotated transcript; variants outside the 
@@ -44,6 +46,7 @@ class Application {
   int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
   int numConcordant, numNonzero, duplicatesRemoved;
   Set<int> seenPositions;
+  Set<String> exonTypes;
   void processExons(Vector<GffFeature*> &exons,
 		    Vector<Interval> &intervals,VariantGraph &,
 		    String &substrate);
@@ -97,6 +100,19 @@ Application::Application()
     numConcordant(0), numNonzero(0), duplicatesRemoved(0)
 {
   // ctor
+
+  exonTypes+="exon";
+  exonTypes+="EXON";
+  exonTypes+="utr";
+  exonTypes+="UTR";
+  exonTypes+="cds";
+  exonTypes+="CDS";
+  exonTypes+="five_prime_UTR";
+  exonTypes+="three_prime_UTR";
+  exonTypes+="single-exon";
+  exonTypes+="initial-exon";
+  exonTypes+="internal-exon";
+  exonTypes+="final-exon";
 }
 
 
@@ -148,23 +164,19 @@ int Application::main(int argc,char *argv[])
 	prevGeneBegin=geneBegin; prevGeneEnd=geneEnd;
 	String substrate;
 	processExons(exons,exonIntervals,variants,substrate);
-	if(substrate!=chrom)
-	  { /*cout<<"CHROM "<<substrate<<endl;*/ chrom=substrate; 
-	    seenPositions.clear(); }
+	if(substrate!=chrom) { chrom=substrate; seenPositions.clear(); }
 	deleteExons(exons);
+	cout<<"XXX "<<currentGene<<" has "<<variants.size()<<" variants"<<endl;
 	if(variants.size()==0) continue;
-	//	cout<<"GENE "<<currentGene<<" "<<geneBegin<<"-"<<geneEnd<<" "
-	//    <<"==================================================="<<endl;
 	SamTabix tabix("tabix",samFile,String("chr")+chrom,geneBegin,geneEnd);
 	processSam(tabix,variants,exonIntervals,geneBegin,geneEnd,
 		   substrate);
-	//cout<<"variants.size="<<variants.size()<<" reads.size="<<variants.getReads().size()<<endl;
 	processGraph(variants,currentGene);
 	continue;
       }
     }
     currentGene=feature->lookupExtra("gene_id");
-    if(feature->getFeatureType()!="exon" ||
+    if(!exonTypes.isMember(feature->getFeatureType()) ||
        pseudogeneRegex.search(feature->lookupExtra("gene_type")))
       { delete feature; continue; }
     exons.push_back(feature);
@@ -296,7 +308,15 @@ void Application::getIntervals(Vector<GffFeature*> &exons,
   IntervalComparator cmp;
   VectorSorter<Interval> sorter(into,cmp);
   sorter.sortAscendInPlace();
-  Interval::Union(into);
+  Interval::coalesce(into);
+
+  // ### DEBUGGING
+  if(into.size()>1) {
+    Interval v(into[0].getBegin(),into[into.size()-1].getEnd());
+    into.clear();
+    into.push_back(v);
+  }
+  // ###
 }
 
 
@@ -320,6 +340,7 @@ void Application::getVariants(const String &substrate,
     Interval interval=*cur;
     const String cmd=String("tabix ")+vcfFile+" "+substrate+":"
       +String(interval.getBegin())+"-"+String(interval.getEnd());
+    //cout<<"XXX "<<cmd<<endl;
     Pipe pipe(cmd,"r");
     while(!pipe.eof()) {
       const String line=pipe.getline();
