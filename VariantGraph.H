@@ -35,6 +35,7 @@ public:
   void phaseComponents(Vector<ConnectedComponent> &);
   //void assignReads(Vector<ConnectedComponent> &);
   void assignReads();
+  bool isSorted();
 protected:
   void deleteReads();
   void phaseComponent(ConnectedComponent &);

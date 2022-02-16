@@ -12,6 +12,39 @@ clean:
 	@rm -f obj/*.o
 
 #---------------------------------------------------------
+$(OBJ)/phd2.o:\
+		phd2.C
+	$(CC) $(CFLAGS) -o $(OBJ)/phd2.o -c \
+		phd2.C
+#---------------------------------------------------------
+phd2: \
+		$(OBJ)/ReadPairManager.o \
+		$(OBJ)/ReadVariants.o \
+		$(OBJ)/ConnectedComponent.o \
+		$(OBJ)/Allele.o \
+		$(OBJ)/Phase.o \
+		$(OBJ)/SamReader.o \
+		$(OBJ)/SamTabix.o \
+		$(OBJ)/SamRecord.o \
+		$(OBJ)/Variant.o \
+		$(OBJ)/VariantGraph.o \
+		$(OBJ)/VariantInRead.o \
+		$(OBJ)/phd2.o
+	$(CC) $(LDFLAGS) -o phd2 \
+		$(OBJ)/ReadPairManager.o \
+		$(OBJ)/ReadVariants.o \
+		$(OBJ)/ConnectedComponent.o \
+		$(OBJ)/Allele.o \
+		$(OBJ)/Phase.o \
+		$(OBJ)/SamReader.o \
+		$(OBJ)/SamTabix.o \
+		$(OBJ)/SamRecord.o \
+		$(OBJ)/Variant.o \
+		$(OBJ)/VariantGraph.o \
+		$(OBJ)/VariantInRead.o \
+		$(OBJ)/phd2.o \
+		$(LIBS)
+#---------------------------------------------------------
 $(OBJ)/phd.o:\
 		phd.C
 	$(CC) $(CFLAGS) -o $(OBJ)/phd.o -c \

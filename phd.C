@@ -166,7 +166,7 @@ int Application::main(int argc,char *argv[])
 	processExons(exons,exonIntervals,variants,substrate);
 	if(substrate!=chrom) { chrom=substrate; seenPositions.clear(); }
 	deleteExons(exons);
-	cout<<"XXX "<<currentGene<<" has "<<variants.size()<<" variants"<<endl;
+	//cout<<"XXX "<<currentGene<<" has "<<variants.size()<<" variants"<<endl;
 	if(variants.size()==0) continue;
 	SamTabix tabix("tabix",samFile,String("chr")+chrom,geneBegin,geneEnd);
 	processSam(tabix,variants,exonIntervals,geneBegin,geneEnd,
@@ -384,13 +384,30 @@ bool Application::parseVariant(const String &line,String &ID,int &pos,
 
 
 void Application::filter(VariantGraph &graph,
-			 const Vector<Interval> &exons)
+			 const Vector<Interval> &exons_const)
 {
-  Vector<Variant> &variants=graph.getVariants();
-  int n=variants.size();
-  for(int i=0 ; i<n ; ++i)
-    if(!find(variants[i],exons))
-      { variants.cut(i); --i; --n; }
+  // PRECONDITION: the graph is sorted by position
+  Vector<Interval> exons=exons_const;
+  IntervalComparator cmp;
+  VectorSorter<Interval> sorter(exons,cmp);
+  sorter.sortAscendInPlace();
+  Vector<Variant> &variants=graph.getVariants(), keep;
+  int numVariants=variants.size();
+
+  //### DEBUGGING
+  if(!graph.isSorted()) throw "Graph is not sorted";
+  //###
+  
+  int i=0;
+  for(Vector<Interval>::const_iterator cur=exons.begin(), end=exons.end() ;
+      cur!=end ; ++cur) {
+    const Interval &t=*cur;
+    int begin=t.getBegin(), End=t.getEnd();
+    for(; i<numVariants ; ++i) if(variants[i].getPos()>=begin) break;
+    for(; i<numVariants ; ++i)
+      if(variants[i].getPos()<End) keep.push_back(variants[i]);
+  }
+  graph.getVariants()=keep;
 }
 
 

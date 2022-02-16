@@ -141,6 +141,14 @@ void VariantGraph::assignReads()
 
 
 
+bool VariantGraph::isSorted()
+{
+  int numVariants=variants.size();
+  for(int j=0 ; j<numVariants-1 ; ++j)
+    if(variants[j].getPos()>variants[j+1].getPos()) return false;
+  return true;
+}
+
 
 
 
