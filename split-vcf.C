@@ -72,8 +72,10 @@ int Application::main(int argc,char *argv[])
   if(wantIndices.size()==0) throw String("Can't find samples in VCF file");
   Variant variant; Vector<Genotype> genotypes;
   while(reader.nextVariant(variant,genotypes)) {
-    if(variant.numAlleles()!=2 || variant.getAllele(0).length()!=1 ||
-       variant.getAllele(1).length()!=1) continue;
+    if(variant.numAlleles()!=2) continue;
+    const String allele1=variant.getAllele(0), allele2=variant.getAllele(1);
+    if(allele1.length()!=1 || allele2.length()!=2 || allele1==allele2)
+      continue;
     const String outfile=outDir+"/"+variant.getChr()+".vcf.gz";
     File *fp=NULL;
     if(fileHandles.isDefined(outfile)) fp=fileHandles[outfile];
