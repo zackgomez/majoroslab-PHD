@@ -204,3 +204,16 @@ $(OBJ)/SamTabix.o:\
 	$(CC) $(CFLAGS) -o $(OBJ)/SamTabix.o -c \
 		SamTabix.C
 #---------------------------------------------------------
+
+#--------------------------------------------------------
+$(OBJ)/split-vcf.o:\
+		split-vcf.C
+	$(CC) $(CFLAGS) -o $(OBJ)/split-vcf.o -c \
+		split-vcf.C
+#---------------------------------------------------------
+split-vcf: \
+		$(OBJ)/split-vcf.o
+	$(CC) $(LDFLAGS) -o split-vcf \
+		$(OBJ)/split-vcf.o \
+		$(LIBS)
+#---------------------------------------------
