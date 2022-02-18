@@ -1,6 +1,6 @@
 /****************************************************************
  subset-vcf-by-sample.C
- Copyright (C)2016 William H. Majoros (martiandna@gmail.com).
+ Copyright (C)2022 William H. Majoros (bmajoros@alumni.duke.edu)
  This is OPEN SOURCE SOFTWARE governed by the Gnu General Public
  License (GPL) version 3, as described at www.opensource.org.
  ****************************************************************/

@@ -168,8 +168,8 @@ int Application::main(int argc,char *argv[])
 	deleteExons(exons);
 	//cout<<"XXX "<<currentGene<<" has "<<variants.size()<<" variants"<<endl;
 	if(variants.size()==0) continue;
-	SamTabix tabix("tabix",samFile,String("chr")+chrom,geneBegin,geneEnd);
-	processSam(tabix,variants,exonIntervals,geneBegin,geneEnd,
+	SamTabix samTabix(tabix,samFile,String("chr")+chrom,geneBegin,geneEnd);
+	processSam(samTabix,variants,exonIntervals,geneBegin,geneEnd,
 		   substrate);
 	processGraph(variants,currentGene);
 	continue;
@@ -338,7 +338,7 @@ void Application::getVariants(const String &substrate,
   for(Vector<Interval>::const_iterator cur=intervals.begin(), 
 	end=intervals.end() ; cur!=end ; ++cur) {
     Interval interval=*cur;
-    const String cmd=String("tabix ")+vcfFile+" "+substrate+":"
+    const String cmd=String(tabix)+vcfFile+" "+substrate+":"
       +String(interval.getBegin())+"-"+String(interval.getEnd());
     //cout<<"XXX "<<cmd<<endl;
     Pipe pipe(cmd,"r");

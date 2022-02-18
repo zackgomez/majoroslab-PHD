@@ -10,6 +10,7 @@
 #include "BOOM/Pipe.H"
 #include "BOOM/Regex.H"
 #include "BOOM/Map.H"
+#include "BOOM/VcfReader.H"
 using namespace std;
 using namespace BOOM;
 
@@ -17,10 +18,13 @@ class Application {
   Regex gzRegex;
   Map<String,File*> fileHandles;
   void closeOutputs();
+  void getSampleIndices(const Vector<String> &wantIDs,
+			const Vector<String> &sampleIDs,Vector<int> &indices);
+  void emitHeaderLines(const Vector<String> &lines,File &);
+  void emitChromLine(const Vector<String> &ids,File &);
 public:
   Application();
   int main(int argc,char *argv[]);
-  void process(File &,const String &outDir);
 };
 
 
@@ -41,7 +45,7 @@ int main(int argc,char *argv[])
 
 
 Application::Application()
-  : gzRegex("*\\.gz$")
+  : gzRegex("gz$")
 {
   // ctor
 }
@@ -52,49 +56,44 @@ int Application::main(int argc,char *argv[])
 {
   // Process command line
   CommandLine cmd(argc,argv,"");
-  if(cmd.numArgs()!=2)
-    throw String("split-vcf <in.vcf[.gz]> <out-dir>");
+  if(cmd.numArgs()!=3)
+    throw String("split-vcf <in.vcf[.gz]> <sample-IDs> <out-dir>");
   const String infile=cmd.arg(0);
-  const String outDir=cmd.arg(1);
+  const String samples=cmd.arg(1);
+  const String outDir=cmd.arg(2);
+  Vector<String> wantIDs;
+  samples.getFields(wantIDs,",");
 
   // Process input VCF file
-  File &file=gzRegex.match(infile) ?
-    *new File(infile) : *new GunzipPipe(infile);
-  process(file,outDir);
-
-  // Close output files
-  closeOutputs();
+  VcfReader reader(infile);
+  const Vector<String> &sampleIDs=reader.getSampleIDs();
+  Vector<int> wantIndices;
+  getSampleIndices(wantIDs,sampleIDs,wantIndices);
+  if(wantIndices.size()==0) throw String("Can't find samples in VCF file");
+  Variant variant; Vector<Genotype> genotypes;
+  while(reader.nextVariant(variant,genotypes)) {
+    if(variant.numAlleles()!=2 || variant.getAllele(0).length()!=1 ||
+       variant.getAllele(1).length()!=1) continue;
+    const String outfile=outDir+"/"+variant.getChr()+".vcf.gz";
+    File *fp=NULL;
+    if(fileHandles.isDefined(outfile)) fp=fileHandles[outfile];
+    else {
+      fp=fileHandles[outfile]=new BGzipPipe(outfile);
+      emitHeaderLines(reader.getHeaderLines(),*fp);
+      emitChromLine(wantIDs,*fp); }
+    fp->print(variant.getText());
+    for(Vector<int>::iterator cur=wantIndices.begin(), end=wantIndices.end() ;
+	cur!=end ; ++cur) fp->print("\t"+genotypes[*cur].getText());
+    fp->print("\n");
+  }
+  reader.close();
   
-  delete &file;
+  // Close files
+  closeOutputs();
+
   return 0;
 }
 
-
-
-void Application::process(File &file,const String &outDir)
-{
-  while(!file.eof()) {
-    const String line=file.getline();
-    if(line.length()==0 || line[0]=='#') continue;
-    Vector<String> fields;
-    line.getFields(fields,"\t");
-    if(fields.size()<9) continue;
-    const String chr=fields[0];
-    const int pos=fields[1].asInt();
-    const String id=fields[2];
-    const String ref=fields[3];
-    const String alt=fields[4];
-    const String pass=fields[6];
-    if(ref.length()>1 || alt.length()>1) continue;
-    if(pass!="PASS") continue;
-    const String outfile=outDir+"/"+chr+".vcf.gz";
-    if(!fileHandles.isDefined(outfile))
-      fileHandles[outfile]=new GzipPipe(outfile);
-    File &fh=*fileHandles[outfile];
-    line=chr+'\t'+pos+'\t'+id+'\t'+ref+'\t'+alt+'\t';
-    fh.print(line+"\n");
-  }
-}
 
 
 void Application::closeOutputs()
@@ -108,4 +107,42 @@ void Application::closeOutputs()
     delete fp;
   }
 }
+
+
+
+void Application::getSampleIndices(const Vector<String> &wantIDs,
+				   const Vector<String> &sampleIDs,
+				   Vector<int> &indices)
+{
+  Set<String> want;
+  for(Vector<String>::const_iterator cur=wantIDs.begin(), end=wantIDs.end() ;
+      cur!=end ; ++cur) want.insert(*cur);
+  int index=0;
+  for(Vector<String>::const_iterator cur=sampleIDs.begin(), end=sampleIDs.end() ;
+      cur!=end ; ++cur) {
+    if(want.isMember(*cur)) indices.push_back(index);
+    ++index;
+  }
+}
+
+
+
+void Application::emitChromLine(const Vector<String> &ids,File &file)
+{
+  file.print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT");
+  for(Vector<String>::const_iterator cur=ids.begin(), end=ids.end() ; cur!=end ; 
+      ++cur)
+    file.print("\t"+*cur);
+  file.print("\n");
+}
+
+
+
+void Application::emitHeaderLines(const Vector<String> &lines,File &f)
+{
+  for(Vector<String>::const_iterator cur=lines.begin(), end=lines.end() ;
+      cur!=end ; ++cur)
+    f.print(*cur+"\n");
+}
+
 
