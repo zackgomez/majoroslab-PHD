@@ -22,6 +22,7 @@ class Application {
 			const Vector<String> &sampleIDs,Vector<int> &indices);
   void emitHeaderLines(const Vector<String> &lines,File &);
   void emitChromLine(const Vector<String> &ids,File &);
+  bool atLeastOneHet(const Vector<Genotype> &,const Vector<int> &indices);
 public:
   Application();
   int main(int argc,char *argv[]);
@@ -73,6 +74,7 @@ int Application::main(int argc,char *argv[])
   Variant variant; Vector<Genotype> genotypes;
   while(reader.nextVariant(variant,genotypes)) {
     if(variant.numAlleles()!=2) continue;
+    if(!atLeastOneHet(genotypes,wantIndices)) continue;
     const String allele1=variant.getAllele(0), allele2=variant.getAllele(1);
     if(allele1.length()!=1 || allele2.length()!=1 || allele1==allele2)
       continue;
@@ -94,6 +96,17 @@ int Application::main(int argc,char *argv[])
   closeOutputs();
 
   return 0;
+}
+
+
+
+bool Application::atLeastOneHet(const Vector<Genotype> &genotypes,
+				const Vector<int> &indices)
+{
+  for(Vector<int>::const_iterator cur=indices.begin(), end=indices.end() ;
+      cur!=end ; ++cur)
+    if(genotypes[*cur].isHet()) return true;
+  return false;
 }
 
 
