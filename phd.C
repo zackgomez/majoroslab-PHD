@@ -1,7 +1,7 @@
 /****************************************************************
  phd.C : Piled Higher & Deeper
 
- Copyright (C)2021 William H. Majoros (bmajoros@alumni.duke.edu)
+ Copyright (C)2022 William H. Majoros (bmajoros@alumni.duke.edu)
  This is OPEN SOURCE SOFTWARE governed by the Gnu General Public
  License (GPL) version 3, as described at www.opensource.org.
  ****************************************************************/
@@ -20,13 +20,14 @@
 #include "BOOM/SumLogProbs.H"
 #include "BOOM/ConfigFile.H"
 #include "SamReader.H"
-#include "SamTabix.H"
+//#include "SamTabix.H"
 #include "VariantGraph.H"
 #include "VariantInRead.H"
+#include "VcfStream.H"
 using namespace std;
 using namespace BOOM;
 
-bool DEBUG=true;
+bool DEBUG=false;
 
 /****************************************************************
  TO DO:
@@ -35,7 +36,8 @@ bool DEBUG=true;
  ****************************************************************/
 
 class Application {
-  String tabix;
+  VcfStream *vcfStream;
+  //String tabix;
   float MIN_PROB_CORRECT;
   bool DEDUPLICATE;
   IlluminaQual illumina;
@@ -57,7 +59,7 @@ class Application {
   bool parseVariant(const String &line,String &ID,int &pos,
 		    char &cRef,char &cAlt,int *genotype);
   void filter(VariantGraph &,const Vector<Interval> &exons);
-  bool find(const Variant &,const Vector<Interval> &exons);
+  bool find(const ::Variant &,const Vector<Interval> &exons);
   void processSam(SamReader &,VariantGraph &,Vector<Interval> &exons,
 		  int geneBegin,int geneEnd,const String &substrate);
   int getLastPos(const VariantGraph &);
@@ -97,7 +99,8 @@ int main(int argc,char *argv[])
 Application::Application()
   : pseudogeneRegex("pseudogene"), chrRegex("chr"),
     readsSeen(0), readsDiscarded(0), readsUnmapped(0), readsWrongChrom(0),
-    numConcordant(0), numNonzero(0), duplicatesRemoved(0)
+    numConcordant(0), numNonzero(0), duplicatesRemoved(0),
+    vcfStream(NULL)
 {
   // ctor
 
@@ -130,13 +133,15 @@ int Application::main(int argc,char *argv[])
 
   // Load parameters from config file
   ConfigFile config(configFile);
-  tabix=config.lookupOrDie("tabix");
+  //tabix=config.lookupOrDie("tabix");
   MIN_PROB_CORRECT=config.getFloatOrDie("min-phasing-probability");
   DEDUPLICATE=config.getBoolOrDie("deduplicate");
   MIN_QUAL=illumina.phredToChar(config.getIntOrDie("min-base-quality"));
   
   // Open input files
   GffReader gff(gffFile);
+  vcfStream=new VcfStream(vcfFile);
+  SamReader samReader(samFile);
 
   // Process the GFF file line-by-line
   String currentGene;
@@ -168,8 +173,8 @@ int Application::main(int argc,char *argv[])
 	deleteExons(exons);
 	//cout<<"XXX "<<currentGene<<" has "<<variants.size()<<" variants"<<endl;
 	if(variants.size()==0) continue;
-	SamTabix samTabix(tabix,samFile,String("chr")+chrom,geneBegin,geneEnd);
-	processSam(samTabix,variants,exonIntervals,geneBegin,geneEnd,
+	//SamTabix samTabix(tabix,samFile,String("chr")+chrom,geneBegin,geneEnd);
+	processSam(samReader,variants,exonIntervals,geneBegin,geneEnd,
 		   substrate);
 	processGraph(variants,currentGene);
 	continue;
@@ -210,10 +215,10 @@ void Application::getGeneLimits(const Vector<GffFeature*> &exons,
 int Application::getLastPos(const VariantGraph &graph)
 {
   int pos=-1;
-  Vector<Variant> &variants=graph.getVariants();
-  for(Vector<Variant>::const_iterator cur=variants.begin(), end=
+  Vector<::Variant> &variants=graph.getVariants();
+  for(Vector<::Variant>::const_iterator cur=variants.begin(), end=
 	variants.end() ; cur!=end ; ++cur) {
-    const Variant &v=*cur;
+    const ::Variant &v=*cur;
     if(v.getPos()>pos) pos=v.getPos();
   }
   return pos;
@@ -338,9 +343,10 @@ void Application::getVariants(const String &substrate,
   for(Vector<Interval>::const_iterator cur=intervals.begin(), 
 	end=intervals.end() ; cur!=end ; ++cur) {
     Interval interval=*cur;
+    vcfStream->getVariants(interval,graph.getVariants());
+    /*
     const String cmd=String(tabix)+vcfFile+" "+substrate+":"
       +String(interval.getBegin())+"-"+String(interval.getEnd());
-    //cout<<"XXX "<<cmd<<endl;
     Pipe pipe(cmd,"r");
     while(!pipe.eof()) {
       const String line=pipe.getline();
@@ -351,6 +357,7 @@ void Application::getVariants(const String &substrate,
       graph.getVariants().push_back(v);
     }
     pipe.close();
+    */
   }
   filter(graph,intervals);
 }
@@ -391,7 +398,7 @@ void Application::filter(VariantGraph &graph,
   IntervalComparator cmp;
   VectorSorter<Interval> sorter(exons,cmp);
   sorter.sortAscendInPlace();
-  Vector<Variant> &variants=graph.getVariants(), keep;
+  Vector<::Variant> &variants=graph.getVariants(), keep;
   int numVariants=variants.size();
 
   //### DEBUGGING
@@ -412,7 +419,7 @@ void Application::filter(VariantGraph &graph,
 
 
 
-bool Application::find(const Variant &v,const Vector<Interval> &exons)
+bool Application::find(const ::Variant &v,const Vector<Interval> &exons)
 {
   for(Vector<Interval>::const_iterator cur=exons.begin(), end=exons.end();
       cur!=end ; ++cur)
@@ -456,22 +463,22 @@ void Application::findVariantsInRead(VariantGraph &graph,
   for(int readPos=0 ; readPos<L ; ++readPos) {
     const int refPos=alignment[readPos]+offset;
     if(refPos==CIGAR_UNDEFINED) continue;
-    for(Vector<Variant>::iterator cur=graph.begin(), end=graph.end() ;
+    for(Vector<::Variant>::iterator cur=graph.begin(), end=graph.end() ;
 	cur!=end ; ++cur) {
-      Variant &v=*cur;
+      ::Variant &v=*cur;
       if(v.getPos()==refPos) {
 	if(qual[readPos]<MIN_QUAL) continue;
 	const char c=seq[readPos];
 	Allele allele;
 	if(c==v.getRef()) allele=REF;
 	else if(c==v.getAlt()) allele=ALT;
-	else {
-	  /* const float pError=illumina.charToErrorProb(qual[readPos]);
+	else if(DEBUG) {
+	  const float pError=illumina.charToErrorProb(qual[readPos]);
 	  cout<<read->getID()<<" ALLELE MISMATCH P(error)="<<pError
 	      <<"="<<illumina.charToPhred(qual[readPos])<<"="
 	      <<qual[readPos]<<" "<<c<<" NOT "<<v.getRef()
 	      <<" NOR "<<v.getAlt()<<" VAR="<<v.getID()
-	      <<" READ POS="<<readPos<<endl; */
+	      <<" READ POS="<<readPos<<endl;
 	  continue;
 	}
 	const float p=1-illumina.charToErrorProb(qualities[readPos]);
@@ -513,7 +520,7 @@ void Application::processGraph(VariantGraph &G,const String &geneID)
   const int N=G.size();
   int totalEdges=0;
   for (int i=0 ; i<N-1 ; ++i) {
-    const Variant &v=G[i];
+    const ::Variant &v=G[i];
     for(int j=0 ; j<2 ; ++j)
       for(int k=0 ; k<2 ; ++k) 
 	totalEdges+=v.getEdges()[j][k];
@@ -553,7 +560,7 @@ void Application::processGraph(VariantGraph &G,const String &geneID)
   for(Vector<ConnectedComponent>::iterator cur=components.begin(),
 	end=components.end() ; cur!=end ; ++cur) {
     ConnectedComponent &comp=*cur;
-    Variant &v=comp[0];
+    ::Variant &v=comp[0];
     const int ref=v.getCount(REF), alt=v.getCount(ALT);
     if(ref+alt==0) continue;
     cout<<geneID<<"\t"<<comp[0].getID()<<"\t"<<ref<<"\t"<<alt<<"\t";
