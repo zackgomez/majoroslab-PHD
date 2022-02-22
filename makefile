@@ -12,76 +12,6 @@ clean:
 	@rm -f obj/*.o
 
 #---------------------------------------------------------
-$(OBJ)/phd3.o:\
-		phd3.C
-	$(CC) $(CFLAGS) -o $(OBJ)/phd3.o -c \
-		phd3.C
-#---------------------------------------------------------
-phd3: \
-		$(OBJ)/VcfStream.o \
-		$(OBJ)/ReadPairManager.o \
-		$(OBJ)/ReadVariants.o \
-		$(OBJ)/ConnectedComponent.o \
-		$(OBJ)/Allele.o \
-		$(OBJ)/Phase.o \
-		$(OBJ)/SamReader.o \
-		$(OBJ)/SamTabix.o \
-		$(OBJ)/SamRecord.o \
-		$(OBJ)/Variant.o \
-		$(OBJ)/VariantGraph.o \
-		$(OBJ)/VariantInRead.o \
-		$(OBJ)/phd3.o
-	$(CC) $(LDFLAGS) -o phd3 \
-		$(OBJ)/VcfStream.o \
-		$(OBJ)/ReadPairManager.o \
-		$(OBJ)/ReadVariants.o \
-		$(OBJ)/ConnectedComponent.o \
-		$(OBJ)/Allele.o \
-		$(OBJ)/Phase.o \
-		$(OBJ)/SamReader.o \
-		$(OBJ)/SamTabix.o \
-		$(OBJ)/SamRecord.o \
-		$(OBJ)/Variant.o \
-		$(OBJ)/VariantGraph.o \
-		$(OBJ)/VariantInRead.o \
-		$(OBJ)/phd3.o \
-		$(LIBS)
-#---------------------------------------------------------
-$(OBJ)/phd2.o:\
-		phd2.C
-	$(CC) $(CFLAGS) -o $(OBJ)/phd2.o -c \
-		phd2.C
-#---------------------------------------------------------
-phd2: \
-		$(OBJ)/VcfStream.o \
-		$(OBJ)/ReadPairManager.o \
-		$(OBJ)/ReadVariants.o \
-		$(OBJ)/ConnectedComponent.o \
-		$(OBJ)/Allele.o \
-		$(OBJ)/Phase.o \
-		$(OBJ)/SamReader.o \
-		$(OBJ)/SamTabix.o \
-		$(OBJ)/SamRecord.o \
-		$(OBJ)/Variant.o \
-		$(OBJ)/VariantGraph.o \
-		$(OBJ)/VariantInRead.o \
-		$(OBJ)/phd2.o
-	$(CC) $(LDFLAGS) -o phd2 \
-		$(OBJ)/VcfStream.o \
-		$(OBJ)/ReadPairManager.o \
-		$(OBJ)/ReadVariants.o \
-		$(OBJ)/ConnectedComponent.o \
-		$(OBJ)/Allele.o \
-		$(OBJ)/Phase.o \
-		$(OBJ)/SamReader.o \
-		$(OBJ)/SamTabix.o \
-		$(OBJ)/SamRecord.o \
-		$(OBJ)/Variant.o \
-		$(OBJ)/VariantGraph.o \
-		$(OBJ)/VariantInRead.o \
-		$(OBJ)/phd2.o \
-		$(LIBS)
-#---------------------------------------------------------
 $(OBJ)/phd.o:\
 		phd.C
 	$(CC) $(CFLAGS) -o $(OBJ)/phd.o -c \
@@ -253,16 +183,25 @@ split-vcf: \
 	$(CC) $(LDFLAGS) -o split-vcf \
 		$(OBJ)/split-vcf.o \
 		$(LIBS)
+#---------------------------------------------------------
+$(OBJ)/split-sam.o:\
+		split-sam.C
+	$(CC) $(CFLAGS) -o $(OBJ)/split-sam.o -c \
+		split-sam.C
+#---------------------------------------------------------
+split-sam: \
+		$(OBJ)/SamReader.o \
+		$(OBJ)/SamRecord.o \
+		$(OBJ)/split-sam.o
+	$(CC) $(LDFLAGS) -o split-sam \
+		$(OBJ)/SamReader.o \
+		$(OBJ)/SamRecord.o \
+		$(OBJ)/split-sam.o \
+		$(LIBS)
 #--------------------------------------------------------
 $(OBJ)/VcfStream.o:\
 		VcfStream.C\
 		VcfStream.H
 	$(CC) $(CFLAGS) -o $(OBJ)/VcfStream.o -c \
 		VcfStream.C
-#---------------------------------------------------------
-$(OBJ)/SamStream.o:\
-		SamStream.C\
-		SamStream.H
-	$(CC) $(CFLAGS) -o $(OBJ)/SamStream.o -c \
-		SamStream.C
 #---------------------------------------------------------
