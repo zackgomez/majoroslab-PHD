@@ -1,15 +1,18 @@
 CC		= g++
 DEBUG		= -g
 OPTIMIZE	= -O
-CFLAGS		= $(OPTIMIZE) -fpermissive -w -Werror=return-type
-LDFLAGS		= $(OPTIMIZE)
+CFLAGS		= $(DEBUG) -fpermissive -Wall # -Werror
+LDFLAGS		= $(DEBUG)
 BOOM		= BOOM
 OBJ		= obj
 LIBS		= -LBOOM -lBOOM -lgsl -lm -lgslcblas
 
-.PHONY : clean
+all: phd subset-vcf-by-samples sort-gff count-isoform-variants count-combinations-in-fragments split-vcf split-sam
+
 clean:
 	@rm -f obj/*.o
+
+.PHONY : clean all
 
 #---------------------------------------------------------
 $(OBJ)/phd.o:\

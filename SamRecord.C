@@ -9,186 +9,153 @@
 using namespace std;
 using namespace BOOM;
 
-SamRecord::SamRecord(const String &ID,const String &refName,int refPos,
-		     String cigar,String seq,unsigned int flags,
-		     const Vector<String> &tags,const String &qual)
-  : ID(ID), refName(refName), refPos(refPos), CIGAR(cigar), seq(seq),
-    flags(flags), tags(tags), qual(qual)
+SamRecord::SamRecord(const String &ID, const String &refName, int refPos,
+                     String cigar, String seq, unsigned int flags,
+                     const Vector<String> &tags, const String &qual)
+    : ID(ID), refName(refName), refPos(refPos), CIGAR(cigar), seq(seq),
+      flags(flags), tags(tags), qual(qual)
 {
   // ctor
 }
-
-
 
 const String &SamRecord::getQualityScores() const
 {
   return qual;
 }
 
-
-
 const String &SamRecord::getID() const
 {
   return ID;
 }
-
-
 
 const SamCigarString &SamRecord::getCigar() const
 {
   return CIGAR;
 }
 
-
-
 const String &SamRecord::getSequence() const
 {
   return seq;
 }
-
 
 const String &SamRecord::getRefName() const
 {
   return refName;
 }
 
-
-
 int SamRecord::getRefPos() const
 {
   return refPos;
 }
 
-
-
 String SamRecord::getTag(const String &label) const
 {
   Regex regex("^([^:]+):[^:]+:(\\S+)");
-  for(Vector<String>::const_iterator cur=tags.begin(), end=tags.end() ;
-      cur!=end ; ++cur) {
-    const String &tag=*cur;
-    if(!regex.match(tag)) throw String("Can't parse SAM tag: ")+tag;
-    if(regex[1]==label) return regex[2];
+  for (Vector<String>::const_iterator cur = tags.begin(), end = tags.end();
+       cur != end; ++cur)
+  {
+    const String &tag = *cur;
+    if (!regex.match(tag))
+      throw String("Can't parse SAM tag: ") + tag;
+    if (regex[1] == label)
+      return regex[2];
     return "";
   }
+
+  return "";
 }
-
-
 
 const Vector<String> &SamRecord::getTags() const
 {
   return tags;
 }
 
-
-
 void SamRecord::parseMDtag(Vector<String> &fields) const
 {
   fields.clear();
-  String md=getTag("MD");
+  String md = getTag("MD");
   Regex rex1("^(\\d+)(.*)"), rex2("^([ACGT])(.*)"), rex3("^(\\^[ACGT]+)(.*)");
-  while(md.length()>0) {
-    if(rex1.search(md)) {
+  while (md.length() > 0)
+  {
+    if (rex1.search(md))
+    {
       fields.push_back(rex1[1]);
-      md=rex1[2]; 
+      md = rex1[2];
     }
-    else if(rex2.search(md)) {
+    else if (rex2.search(md))
+    {
       fields.push_back(rex2[1]);
-      md=rex2[2]; 
+      md = rex2[2];
     }
-    else if(rex3.search(md)) {
+    else if (rex3.search(md))
+    {
       fields.push_back(rex3[1]);
-      md=rex3[2]; 
+      md = rex3[2];
     }
-    else throw String("Can't parse MD tag: ")+md;
+    else
+      throw String("Can't parse MD tag: ") + md;
   }
 }
-
-
 
 bool SamRecord::flag_hasMultipleSegments() const
 {
   return bool(flags & 0x1);
 }
 
-
-
 bool SamRecord::flag_properlyAligned() const
 {
   return bool(flags & 0x2);
 }
-
-
 
 bool SamRecord::flag_unmapped() const
 {
   return bool(flags & 0x4);
 }
 
-
-
 bool SamRecord::flag_nextSegmentUnmapped() const
 {
   return bool(flags & 0x8);
 }
-
-
 
 bool SamRecord::flag_revComp() const
 {
   return bool(flags & 0x10);
 }
 
-
-
 bool SamRecord::flag_nextSegmentRevComp() const
 {
   return bool(flags & 0x20);
 }
-
-
 
 bool SamRecord::flag_firstOfPair() const
 {
   return bool(flags & 0x40);
 }
 
-
-
 bool SamRecord::flag_secondOfPair() const
 {
   return bool(flags & 0x80);
 }
-
-
 
 bool SamRecord::flag_secondaryAlignment() const
 {
   return bool(flags & 0x100);
 }
 
-
-
 bool SamRecord::flag_failedFilters() const
 {
   return bool(flags & 0x200);
 }
-
-
 
 bool SamRecord::flag_PCRduplicate() const
 {
   return bool(flags & 0x400);
 }
 
-
-
 bool SamRecord::flag_supplAlignment() const
 {
   return bool(flags & 0x800);
 }
-
-
 
 /*
  FLAGS CODES:
