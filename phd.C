@@ -35,6 +35,13 @@ bool DEBUG = false;
    annotated transcript are discarded, but they could be used
  ****************************************************************/
 
+struct GeneRegion
+{
+  String geneID;
+  String substrate;
+  Interval interval;
+};
+
 class Application
 {
   VcfStream *vcfStream;
@@ -43,29 +50,17 @@ class Application
   bool DEDUPLICATE;
   IlluminaQual illumina;
   char MIN_QUAL; // This is the encoding charater, NOT the integer value!
-  Regex pseudogeneRegex;
-  Regex chrRegex;
+  mutable Regex pseudogeneRegex;
+  mutable Regex chrRegex;
   String vcfFile;
   int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
   int numConcordant, numNonzero, duplicatesRemoved;
   Set<int> seenPositions;
   Set<String> exonTypes;
-  void processExons(Vector<GffFeature *> &exons,
-                    Vector<Interval> &intervals, VariantGraph &,
-                    String &substrate);
-  void deleteExons(Vector<GffFeature *> &exons);
-  void getIntervals(Vector<GffFeature *> &exons, Vector<Interval> &into);
-  void getVariants(const String &substrate,
-                   const Vector<Interval> &intervals, VariantGraph &);
   bool parseVariant(const String &line, String &ID, int &pos,
                     char &cRef, char &cAlt, int *genotype);
-  void filter(VariantGraph &, const Vector<Interval> &exons);
-  bool find(const ::Variant &, const Vector<Interval> &exons);
-  void processSam(SamReader &, VariantGraph &, Vector<Interval> &exons,
+  void processSam(SamReader &, VariantGraph &,
                   int geneBegin, int geneEnd, const String &substrate);
-  int getLastPos(const VariantGraph &);
-  int getLastPos(const Vector<Interval> &exons);
-  void getGeneLimits(const Vector<GffFeature *> &exons, int &begin, int &end);
   bool addEdges(const SamRecord *read, VariantGraph &graph);
   void installEdges(ReadVariants &, const String &readID,
                     const String &qualities, VariantGraph &);
@@ -73,6 +68,8 @@ class Application
                           CigarAlignment &, ReadVariants &,
                           const String &qualities);
   void processGraph(VariantGraph &, const String &geneID);
+
+  std::vector<GeneRegion> readGeneRegions(GffReader &gff) const;
 
 public:
   Application();
@@ -155,68 +152,21 @@ int Application::main(int argc, char *argv[])
   vcfStream = new VcfStream(vcfFile);
   SamReader samReader(samFile);
 
-  // Process the GFF file line-by-line
-  String currentGene;
-  GffFeature *buffer = NULL;
-  Vector<GffFeature *> exons;
-  String chrom;
-  int prevGeneBegin = -1, prevGeneEnd = -1;
-  while (true)
+  std::vector<GeneRegion> geneRegions = readGeneRegions(gff);
+
+  for (const auto &region : geneRegions)
   {
-    GffFeature *feature;
-    if (buffer)
-    {
-      feature = buffer;
-      buffer = NULL;
-    }
-    else
-    {
-      feature = gff.nextFeature();
-      if (feature == NULL)
-        break;
-      const String &geneID = feature->lookupExtra("gene_id");
-      if (currentGene != "" && geneID != currentGene)
-      {
-        buffer = feature;
-        if (exons.size() == 0)
-          continue;
-        VariantGraph variants;
-        Vector<Interval> exonIntervals;
-        int geneBegin, geneEnd;
-        getGeneLimits(exons, geneBegin, geneEnd);
-        if (geneEnd < prevGeneBegin)
-          throw RootException(String("GTF is not sorted: (") + prevGeneBegin +
-                              "," + prevGeneEnd + ") overlaps (" + geneBegin + "," +
-                              geneEnd + ")");
-        prevGeneBegin = geneBegin;
-        prevGeneEnd = geneEnd;
-        String substrate;
-        processExons(exons, exonIntervals, variants, substrate);
-        if (substrate != chrom)
-        {
-          chrom = substrate;
-          seenPositions.clear();
-        }
-        deleteExons(exons);
-        // cout<<"XXX "<<currentGene<<" has "<<variants.size()<<" variants"<<endl;
-        if (variants.size() == 0)
-          continue;
-        // SamTabix samTabix(tabix,samFile,String("chr")+chrom,geneBegin,geneEnd);
-        processSam(samReader, variants, exonIntervals, geneBegin, geneEnd,
-                   substrate);
-        processGraph(variants, currentGene);
-        continue;
-      }
-    }
-    currentGene = feature->lookupExtra("gene_id");
-    if (!exonTypes.isMember(feature->getFeatureType()) ||
-        pseudogeneRegex.search(feature->lookupExtra("gene_type")))
-    {
-      delete feature;
+    VariantGraph graph;
+    vcfStream->getVariants(region.interval, graph.getVariants());
+
+    if (graph.size() == 0)
       continue;
-    }
-    exons.push_back(feature);
+
+    processSam(samReader, graph, region.interval.getBegin(), region.interval.getEnd(),
+               region.substrate);
+    processGraph(graph, region.geneID);
   }
+
   cerr << readsSeen << " reads seen, " << readsDiscarded << " discarded, "
        << readsUnmapped << " unmapped" << endl;
   cerr << numConcordant << " concordant edges out of " << numNonzero << " nonzero"
@@ -225,61 +175,7 @@ int Application::main(int argc, char *argv[])
   return 0;
 }
 
-void Application::getGeneLimits(const Vector<GffFeature *> &exons,
-                                int &begin, int &end)
-{
-  begin = -1;
-  end = -1;
-  for (Vector<GffFeature *>::const_iterator cur = exons.begin(),
-                                            End = exons.end();
-       cur != End; ++cur)
-  {
-    const GffFeature *exon = *cur;
-    int b = exon->getBegin(), e = exon->getEnd();
-    if (begin == -1)
-    {
-      begin = b;
-      end = e;
-      continue;
-    }
-    if (b < begin)
-      begin = b;
-    if (e > end)
-      end = e;
-  }
-}
-
-int Application::getLastPos(const VariantGraph &graph)
-{
-  int pos = -1;
-  Vector<::Variant> &variants = graph.getVariants();
-  for (Vector<::Variant>::const_iterator cur = variants.begin(), end =
-                                                                     variants.end();
-       cur != end; ++cur)
-  {
-    const ::Variant &v = *cur;
-    if (v.getPos() > pos)
-      pos = v.getPos();
-  }
-  return pos;
-}
-
-int Application::getLastPos(const Vector<Interval> &exons)
-{
-  int pos = -1;
-  for (Vector<Interval>::const_iterator cur = exons.begin(), end =
-                                                                 exons.end();
-       cur != end; ++cur)
-  {
-    const Interval &v = *cur;
-    if (v.getEnd() > pos)
-      pos = v.getEnd();
-  }
-  return pos;
-}
-
-void Application::processSam(SamReader &sam, VariantGraph &graph,
-                             Vector<Interval> &exons, int geneBegin,
+void Application::processSam(SamReader &sam, VariantGraph &graph, int geneBegin,
                              int geneEnd, const String &substrate)
 {
   // XXX(zack): does this need to be static?  If so figure out a better way to do this.
@@ -326,7 +222,7 @@ void Application::processSam(SamReader &sam, VariantGraph &graph,
     if (readSubstrate < substrate)
     {
       delete rec;
-      // cout<<"wrong chrom"<<endl;
+      // cout << "wrong chrom" << endl;
       ++readsWrongChrom;
       continue;
     } // ### ???
@@ -353,81 +249,6 @@ void Application::processSam(SamReader &sam, VariantGraph &graph,
   // cout<<debug<<" records retrieved by tabix"<<endl;
 }
 
-void Application::processExons(Vector<GffFeature *> &exons,
-                               Vector<Interval> &intervals,
-                               VariantGraph &graph,
-                               String &substrate)
-{
-  if (exons.size() == 0)
-    return;
-  GffFeature &exon = *exons[0];
-  substrate = exon.getSubstrate();
-  substrate = chrRegex.substitute(substrate, "");
-  getIntervals(exons, intervals);
-  getVariants(substrate, intervals, graph);
-}
-
-void Application::getIntervals(Vector<GffFeature *> &exons,
-                               Vector<Interval> &into)
-{
-  for (Vector<GffFeature *>::iterator cur = exons.begin(), end = exons.end();
-       cur != end; ++cur)
-  {
-    const GffFeature *feature = *cur;
-    into.push_back(Interval(feature->getBegin(), feature->getEnd()));
-  }
-
-  IntervalComparator cmp;
-  VectorSorter<Interval> sorter(into, cmp);
-  sorter.sortAscendInPlace();
-  Interval::coalesce(into);
-
-  // ### DEBUGGING
-  if (into.size() > 1)
-  {
-    Interval v(into[0].getBegin(), into[into.size() - 1].getEnd());
-    into.clear();
-    into.push_back(v);
-  }
-  // ###
-}
-
-void Application::deleteExons(Vector<GffFeature *> &exons)
-{
-  for (Vector<GffFeature *>::iterator cur = exons.begin(), end = exons.end();
-       cur != end; ++cur)
-    delete *cur;
-  exons.clear();
-}
-
-void Application::getVariants(const String &substrate,
-                              const Vector<Interval> &intervals,
-                              VariantGraph &graph)
-{
-  for (Vector<Interval>::const_iterator cur = intervals.begin(),
-                                        end = intervals.end();
-       cur != end; ++cur)
-  {
-    Interval interval = *cur;
-    vcfStream->getVariants(interval, graph.getVariants());
-    /*
-    const String cmd=String(tabix)+vcfFile+" "+substrate+":"
-      +String(interval.getBegin())+"-"+String(interval.getEnd());
-    Pipe pipe(cmd,"r");
-    while(!pipe.eof()) {
-      const String line=pipe.getline();
-      if(line.length()>0 && line[0]=='#') continue;
-      String ID; int pos; char ref,alt; int genotype[2];
-      if(!parseVariant(line,ID,pos,ref,alt,genotype)) continue;
-      Variant v(ID,pos,ref,alt,genotype);
-      graph.getVariants().push_back(v);
-    }
-    pipe.close();
-    */
-  }
-  filter(graph, intervals);
-}
-
 bool Application::parseVariant(const String &line, String &ID, int &pos,
                                char &cRef, char &cAlt, int *genotype)
 {
@@ -451,6 +272,7 @@ bool Application::parseVariant(const String &line, String &ID, int &pos,
   else
     return false;
 
+  // XXX(zack): check out this indexing stuff
   pos = fields[1].asInt() - 1; // Convert 1-based coord to 0-based
   ID = fields[2];
   String ref = fields[3], alt = fields[4];
@@ -463,47 +285,6 @@ bool Application::parseVariant(const String &line, String &ID, int &pos,
   if (cAlt != 'A' && cAlt != 'C' && cAlt != 'G' && cAlt != 'T')
     return false;
   return true;
-}
-
-void Application::filter(VariantGraph &graph,
-                         const Vector<Interval> &exons_const)
-{
-  // PRECONDITION: the graph is sorted by position
-  Vector<Interval> exons = exons_const;
-  IntervalComparator cmp;
-  VectorSorter<Interval> sorter(exons, cmp);
-  sorter.sortAscendInPlace();
-  Vector<::Variant> &variants = graph.getVariants(), keep;
-  int numVariants = variants.size();
-
-  // ### DEBUGGING
-  if (!graph.isSorted())
-    throw "Graph is not sorted";
-  // ###
-
-  int i = 0;
-  for (Vector<Interval>::const_iterator cur = exons.begin(), end = exons.end();
-       cur != end; ++cur)
-  {
-    const Interval &t = *cur;
-    int begin = t.getBegin(), End = t.getEnd();
-    for (; i < numVariants; ++i)
-      if (variants[i].getPos() >= begin)
-        break;
-    for (; i < numVariants; ++i)
-      if (variants[i].getPos() < End)
-        keep.push_back(variants[i]);
-  }
-  graph.getVariants() = keep;
-}
-
-bool Application::find(const ::Variant &v, const Vector<Interval> &exons)
-{
-  for (Vector<Interval>::const_iterator cur = exons.begin(), end = exons.end();
-       cur != end; ++cur)
-    if ((*cur).contains(v.getPos()))
-      return true;
-  return false;
 }
 
 bool Application::addEdges(const SamRecord *read,
@@ -680,4 +461,60 @@ void Application::processGraph(VariantGraph &G, const String &geneID)
     cout << endl;
     ++compNum;
   }
+}
+
+std::vector<GeneRegion> Application::readGeneRegions(GffReader &gff) const
+{
+
+  std::vector<GeneRegion> geneRegions;
+  String currentGeneID;
+  String currentSubstrate;
+  Interval accumulatedRegion;
+  while (GffFeature *feature = gff.nextFeature())
+  {
+    // Skip non-exon features
+    if (!exonTypes.isMember(feature->getFeatureType()) || pseudogeneRegex.search(feature->lookupExtra("gene_type")))
+    {
+      delete feature;
+      continue;
+    }
+
+    String geneID = feature->lookupExtra("gene_id");
+    // first region
+    if (currentGeneID == "")
+    {
+      currentGeneID = geneID;
+      currentSubstrate = chrRegex.substitute(feature->getSubstrate(), "");
+      accumulatedRegion = Interval(feature->getBegin(), feature->getEnd());
+    }
+    // accumulating region
+    else if (geneID == currentGeneID)
+    {
+      accumulatedRegion.setBegin(std::min(accumulatedRegion.getBegin(), feature->getBegin()));
+      accumulatedRegion.setEnd(std::max(accumulatedRegion.getEnd(), feature->getEnd()));
+    }
+    // new region
+    else
+    {
+      assert(accumulatedRegion.length() > 0);
+      geneRegions.push_back(GeneRegion{currentGeneID, currentSubstrate, accumulatedRegion});
+      accumulatedRegion = Interval(feature->getBegin(), feature->getEnd());
+      currentGeneID = geneID;
+    }
+  }
+  if (accumulatedRegion.length() > 0)
+  {
+    geneRegions.push_back(GeneRegion{currentGeneID, currentSubstrate, accumulatedRegion});
+  }
+
+  // assert sorted and non-overlapping
+  for (size_t i = 1; i < geneRegions.size(); ++i)
+  {
+    if (geneRegions[i].interval.getEnd() < geneRegions[i - 1].interval.getBegin())
+    {
+      throw RootException(String("GTF is not sorted: (") + geneRegions[i - 1].interval.getBegin() + "," + geneRegions[i - 1].interval.getEnd() + ") overlaps (" + geneRegions[i].interval.getBegin() + "," + geneRegions[i].interval.getEnd() + ")");
+    }
+  }
+
+  return geneRegions;
 }

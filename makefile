@@ -1,7 +1,7 @@
 CC		= g++
 DEBUG		= -g
 OPTIMIZE	= -O
-CFLAGS		= $(DEBUG) -fpermissive -Wall # -Werror
+CFLAGS		= $(DEBUG) -fpermissive # -Wall # -Werror
 LDFLAGS		= $(DEBUG)
 BOOM		= BOOM
 OBJ		= obj
