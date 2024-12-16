@@ -42,6 +42,18 @@ struct GeneRegion
   Interval interval;
 };
 
+struct Stats
+{
+  int readsSeen;
+  int readsDiscarded;
+  int readsUnmapped;
+  int readsWrongChrom;
+  int readsFiltered;
+  int numConcordant;
+  int numNonzero;
+  int duplicatesRemoved;
+};
+
 class Application
 {
   VcfStream *vcfStream;
@@ -53,10 +65,11 @@ class Application
   mutable Regex pseudogeneRegex;
   mutable Regex chrRegex;
   String vcfFile;
-  int readsSeen, readsDiscarded, readsUnmapped, readsWrongChrom;
-  int numConcordant, numNonzero, duplicatesRemoved;
+  Stats stats = {};
   Set<int> seenPositions;
   Set<String> exonTypes;
+  SamRecord *samRecordBuffer = NULL;
+
   bool parseVariant(const String &line, String &ID, int &pos,
                     char &cRef, char &cAlt, int *genotype);
   void processSam(SamReader &, VariantGraph &,
@@ -109,8 +122,6 @@ int main(int argc, char *argv[])
 
 Application::Application()
     : pseudogeneRegex("pseudogene"), chrRegex("chr"),
-      readsSeen(0), readsDiscarded(0), readsUnmapped(0), readsWrongChrom(0),
-      numConcordant(0), numNonzero(0), duplicatesRemoved(0),
       vcfStream(NULL)
 {
   // ctor
@@ -159,6 +170,8 @@ int Application::main(int argc, char *argv[])
     VariantGraph graph;
     vcfStream->getVariants(region.interval, graph.getVariants());
 
+    // cerr << "Chr: " << region.substrate << "\tGene: " << region.geneID << "\tStart: " << region.interval.getBegin() << "\tEnd: " << region.interval.getEnd() << "\tVariants: " << graph.size() << endl;
+
     if (graph.size() == 0)
       continue;
 
@@ -167,46 +180,78 @@ int Application::main(int argc, char *argv[])
     processGraph(graph, region.geneID);
   }
 
-  cerr << readsSeen << " reads seen, " << readsDiscarded << " discarded, "
-       << readsUnmapped << " unmapped" << endl;
-  cerr << numConcordant << " concordant edges out of " << numNonzero << " nonzero"
+  cerr << stats.readsSeen << " reads seen, " << stats.readsDiscarded << " discarded, "
+       << stats.readsFiltered << " filtered, " << stats.readsUnmapped << " unmapped" << endl;
+  cerr << stats.numConcordant << " concordant edges out of " << stats.numNonzero << " nonzero"
        << endl;
-  cerr << duplicatesRemoved << " duplicate reads removed" << endl;
+  cerr << stats.duplicatesRemoved << " duplicate reads removed" << endl;
   return 0;
 }
 
 void Application::processSam(SamReader &sam, VariantGraph &graph, int geneBegin,
                              int geneEnd, const String &substrate)
 {
-  // XXX(zack): does this need to be static?  If so figure out a better way to do this.
-  static SamRecord *buffer = NULL;
-  // cout<<substrate<<":"<<geneBegin<<"-"<<geneEnd<<endl;
-  int debug = 0;
   while (true)
   {
     SamRecord *rec;
-    if (buffer)
+    if (samRecordBuffer)
     {
-      rec = buffer;
-      buffer = NULL;
+      rec = samRecordBuffer;
+      samRecordBuffer = NULL;
     }
     else
     {
       rec = sam.nextRecord();
       if (rec)
-        ++readsSeen;
+        ++stats.readsSeen;
     }
     if (!rec)
       break;
-    if (rec->flag_unmapped())
+
+    String readSubstrate = rec->getRefName();
+    readSubstrate = chrRegex.substitute(readSubstrate, "");
+    if (readSubstrate < substrate)
     {
-      cout << "unmapped" << endl;
       delete rec;
-      ++readsUnmapped;
+      ++stats.readsWrongChrom;
       continue;
     }
+
     const int refPos = rec->getRefPos();
-    ++debug;
+    // XXX(zack): I think this should be <=
+    // 0-indexed refPos, genomicSpan is half-open, so refPos + genomicSpan is
+    // past the end
+    if (refPos + rec->getCigar().genomicSpan() <= geneBegin)
+    {
+      // cout<<"discarding "<<rec->getID()<<" @ "<<refPos<<"+"<<rec->getSequence().getLength()<<" < "<<geneBegin<<endl;
+      delete rec;
+      ++stats.readsDiscarded;
+      continue;
+    }
+    // XXX(zack): I think this should be >=
+    // geneEnd is from the GFF file, which was converted to half-open 0-indexed
+    // positions
+    if (refPos >= geneEnd)
+    {
+      // cout << "after gene" << endl;
+      samRecordBuffer = rec;
+      break;
+    }
+
+    if (rec->flag_unmapped())
+    {
+      delete rec;
+      ++stats.readsUnmapped;
+      continue;
+    }
+
+    // NEW filtering to match samtools mpileup defaults ([UNMAP,SECONDARY,QCFAIL,DUP])
+    if (rec->flag_secondaryAlignment() || rec->flag_failedFilters())
+    {
+      delete rec;
+      ++stats.readsFiltered;
+      continue;
+    }
 
     // if(seenPositions.isMember(refPos)) { delete rec; continue; }
     // seenPositions+=refPos;
@@ -214,39 +259,14 @@ void Application::processSam(SamReader &sam, VariantGraph &graph, int geneBegin,
     {
       // cout<<"duplicate"<<endl;
       delete rec;
-      ++duplicatesRemoved;
+      ++stats.duplicatesRemoved;
       continue;
-    }
-    String readSubstrate = rec->getRefName();
-    readSubstrate = chrRegex.substitute(readSubstrate, "");
-    if (readSubstrate < substrate)
-    {
-      delete rec;
-      // cout << "wrong chrom" << endl;
-      ++readsWrongChrom;
-      continue;
-    } // ### ???
-
-    if (refPos + rec->getCigar().genomicSpan() < geneBegin)
-    {
-      // cout<<"discarding "<<rec->getID()<<" @ "<<refPos<<"+"<<rec->getSequence().getLength()<<" < "<<geneBegin<<endl;
-      delete rec;
-      ++readsDiscarded;
-      continue;
-    }
-
-    if (refPos > geneEnd)
-    {
-      // cout << "after gene" << endl;
-      buffer = rec;
-      break;
     }
     const bool containsVariants = addEdges(rec, graph);
     // if(!containsVariants) cout<<"no variants"<<endl;
     // else cout<<"CONTAINS VARIANTS"<<endl;
     delete rec;
   }
-  // cout<<debug<<" records retrieved by tabix"<<endl;
 }
 
 bool Application::parseVariant(const String &line, String &ID, int &pos,
@@ -392,9 +412,9 @@ void Application::processGraph(VariantGraph &G, const String &geneID)
       for (int k = 0; k < 2; ++k)
         totalEdges += v.getEdges()[j][k];
     if (v.nonzero())
-      ++numNonzero;
+      ++stats.numNonzero;
     if (v.concordant())
-      ++numConcordant;
+      ++stats.numConcordant;
   }
   // if(totalEdges<1) return;
 
