@@ -45,13 +45,14 @@ struct GeneRegion
 struct Stats
 {
   int readsSeen;
-  int readsDiscarded;
+  int irrelevantReads;
   int readsUnmapped;
   int readsWrongChrom;
   int readsFiltered;
   int numConcordant;
   int numNonzero;
   int duplicatesRemoved;
+  int readsWithVariants;
 };
 
 class Application
@@ -74,7 +75,8 @@ class Application
                     char &cRef, char &cAlt, int *genotype);
   void processSam(SamReader &, VariantGraph &,
                   int geneBegin, int geneEnd, const String &substrate);
-  bool addEdges(const SamRecord *read, VariantGraph &graph);
+  // @return number of variants found in the read
+  int addEdges(const SamRecord *read, VariantGraph &graph);
   void installEdges(ReadVariants &, const String &readID,
                     const String &qualities, VariantGraph &);
   void findVariantsInRead(VariantGraph &, const SamRecord *,
@@ -180,11 +182,11 @@ int Application::main(int argc, char *argv[])
     processGraph(graph, region.geneID);
   }
 
-  cerr << stats.readsSeen << " reads seen, " << stats.readsDiscarded << " discarded, "
-       << stats.readsFiltered << " filtered, " << stats.readsUnmapped << " unmapped" << endl;
-  cerr << stats.numConcordant << " concordant edges out of " << stats.numNonzero << " nonzero"
-       << endl;
-  cerr << stats.duplicatesRemoved << " duplicate reads removed" << endl;
+  cerr << stats.readsSeen << " reads seen, " << stats.irrelevantReads << " irrelevant, "
+       << stats.readsFiltered << " filtered, " << stats.readsUnmapped << " unmapped\n"
+       << stats.readsWithVariants << " reads with variants" << "\n"
+       << stats.numConcordant << " concordant edges out of " << stats.numNonzero << " nonzero" << "\n"
+       << stats.duplicatesRemoved << " duplicate reads removed" << "\n";
   return 0;
 }
 
@@ -225,7 +227,7 @@ void Application::processSam(SamReader &sam, VariantGraph &graph, int geneBegin,
     {
       // cout<<"discarding "<<rec->getID()<<" @ "<<refPos<<"+"<<rec->getSequence().getLength()<<" < "<<geneBegin<<endl;
       delete rec;
-      ++stats.readsDiscarded;
+      ++stats.irrelevantReads;
       continue;
     }
     // XXX(zack): I think this should be >=
@@ -262,7 +264,12 @@ void Application::processSam(SamReader &sam, VariantGraph &graph, int geneBegin,
       ++stats.duplicatesRemoved;
       continue;
     }
-    const bool containsVariants = addEdges(rec, graph);
+    const int numVariants = addEdges(rec, graph);
+
+    if (numVariants > 0)
+    {
+      stats.readsWithVariants++;
+    }
     // if(!containsVariants) cout<<"no variants"<<endl;
     // else cout<<"CONTAINS VARIANTS"<<endl;
     delete rec;
@@ -307,8 +314,8 @@ bool Application::parseVariant(const String &line, String &ID, int &pos,
   return true;
 }
 
-bool Application::addEdges(const SamRecord *read,
-                           VariantGraph &graph)
+int Application::addEdges(const SamRecord *read,
+                          VariantGraph &graph)
 {
   const CigarString &cigar = read->getCigar();
   CigarAlignment &alignment = *cigar.getAlignment();
@@ -316,15 +323,14 @@ bool Application::addEdges(const SamRecord *read,
   ReadVariants readVariants(read->getID());
   findVariantsInRead(graph, read, alignment, readVariants,
                      read->getQualityScores());
-  bool ret = false;
   if (readVariants.size() > 0)
   {
+    // std::cerr << "found " << readVariants.size() << " variants in read " << read->getID() << "\n";
     installEdges(readVariants, read->getID(), read->getQualityScores(),
                  graph);
-    ret = true;
   }
+  return readVariants.size();
   // delete &alignment;
-  return ret; // = whether variants were found in the read
 }
 
 void Application::findVariantsInRead(VariantGraph &graph,
