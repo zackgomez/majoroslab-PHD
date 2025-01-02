@@ -12,14 +12,14 @@
 using namespace std;
 using namespace BOOM;
 
-
-class ReadPairManager {
+class ReadPairManager
+{
 public:
   ReadPairManager();
-  bool Register(ReadVariants *); // returns false if ID previously seen
+  void Register(ReadVariants *);
+
 protected:
-  Map<String,ReadVariants*> idToRead;
+  Map<String, ReadVariants *> idToRead;
 };
 
 #endif
-

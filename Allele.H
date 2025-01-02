@@ -9,12 +9,12 @@
 #include <iostream>
 using namespace std;
 
-enum Allele {
-  REF=0,
-  ALT=1
+enum Allele
+{
+  REF = 0,
+  ALT = 1
 };
 
-Allele swap(Allele);
+Allele oppositeAllele(Allele);
 
 #endif
-

@@ -8,14 +8,14 @@
 #include "Phase.H"
 using namespace std;
 
-VariantPhase swap(VariantPhase p) 
+VariantPhase swapPhase(VariantPhase p) 
 {
   switch(p) {
-  case UNPHASED: throw "Error in VariantPhase swap()";
+  case UNPHASED: throw "Error in VariantPhase swapPhase()";
   case IN_PHASE: return ANTI_PHASED;
   case ANTI_PHASED: return IN_PHASE;
   }
-  throw "No case in VariantPhase swap()";
+  throw "No case in VariantPhase swapPhase()";
 }
 
 

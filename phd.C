@@ -172,8 +172,6 @@ int Application::main(int argc, char *argv[])
     VariantGraph graph;
     vcfStream->getVariants(region.interval, graph.getVariants());
 
-    // cerr << "Chr: " << region.substrate << "\tGene: " << region.geneID << "\tStart: " << region.interval.getBegin() << "\tEnd: " << region.interval.getEnd() << "\tVariants: " << graph.size() << endl;
-
     if (graph.size() == 0)
       continue;
 
@@ -220,22 +218,14 @@ void Application::processSam(SamReader &sam, VariantGraph &graph, int geneBegin,
     }
 
     const int refPos = rec->getRefPos();
-    // XXX(zack): I think this should be <=
-    // 0-indexed refPos, genomicSpan is half-open, so refPos + genomicSpan is
-    // past the end
     if (refPos + rec->getCigar().genomicSpan() <= geneBegin)
     {
-      // cout<<"discarding "<<rec->getID()<<" @ "<<refPos<<"+"<<rec->getSequence().getLength()<<" < "<<geneBegin<<endl;
       delete rec;
       ++stats.irrelevantReads;
       continue;
     }
-    // XXX(zack): I think this should be >=
-    // geneEnd is from the GFF file, which was converted to half-open 0-indexed
-    // positions
     if (refPos >= geneEnd)
     {
-      // cout << "after gene" << endl;
       samRecordBuffer = rec;
       break;
     }
@@ -317,10 +307,10 @@ bool Application::parseVariant(const String &line, String &ID, int &pos,
 int Application::addEdges(const SamRecord *read,
                           VariantGraph &graph)
 {
-  const CigarString &cigar = read->getCigar();
+  const SamCigarString &cigar = read->getCigar();
   CigarAlignment &alignment = *cigar.getAlignment();
   const int numNodes = graph.size();
-  ReadVariants readVariants(read->getID());
+  ReadVariants readVariants(read->getID(), Interval(read->getRefPos(), read->getRefPos() + cigar.genomicSpan()));
   findVariantsInRead(graph, read, alignment, readVariants,
                      read->getQualityScores());
   if (readVariants.size() > 0)

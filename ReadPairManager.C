@@ -11,25 +11,24 @@ using namespace BOOM;
 
 ReadPairManager::ReadPairManager()
 {
-  // ctor
 }
 
-
-
-bool ReadPairManager::Register(ReadVariants *r)
+void ReadPairManager::Register(ReadVariants *r)
 {
-  const String &id=r->getID();
-  if(!idToRead.isDefined(id)) {
-    idToRead[id]=r;
+  const String &id = r->getID();
+  if (!idToRead.isDefined(id))
+  {
+    idToRead[id] = r;
     r->setFirstOfPair(true);
-    return true;
   }
-  else {
-    ReadVariants *first=idToRead[id]; // ### this is causing the problem
-    first->setMate(r);
-    r->setFirstOfPair(false);
-    return false;
+  else
+  {
+    ReadVariants *first = idToRead[id];
+
+    if (first->getInterval().overlaps(r->getInterval()))
+    {
+      first->setMate(r);
+      r->setFirstOfPair(false);
+    }
   }
 }
-
-

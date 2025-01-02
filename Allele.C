@@ -8,12 +8,7 @@
 #include "Allele.H"
 using namespace std;
 
-Allele swap(Allele allele)
+Allele oppositeAllele(Allele allele)
 {
-  return allele==REF ? ALT : REF;
+  return allele == REF ? ALT : REF;
 }
-
-
-
-
-

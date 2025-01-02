@@ -9,48 +9,33 @@
 using namespace std;
 using namespace BOOM;
 
-ReadVariants::ReadVariants()
-  : firstOfPair(false), mate(NULL), wantToSkip(false)
+ReadVariants::ReadVariants(const String &id, const Interval &interval)
+    : id(id), interval(interval), firstOfPair(false), mate(NULL), wantToSkip(false)
 {
-  // ctor
 }
-
-
-
-ReadVariants::ReadVariants(const String &id)
-  : id(id), firstOfPair(false), mate(NULL), wantToSkip(false)
-{
-  // ctor
-}
-
-
 
 void ReadVariants::setFirstOfPair(bool f)
 {
-  firstOfPair=f;
+  firstOfPair = f;
 }
-
-
 
 Vector<VariantInRead> &ReadVariants::getVariants()
 {
   return variants;
 }
 
-
-
 bool ReadVariants::consistentWithPhase()
 {
-  const int L=variants.size();
-  for(int i=0 ; i<L-1 ; ++i) {
-    const VariantInRead &thisVar=variants[i], nextVar=variants[i+1];
-    const Allele a1=thisVar.allele, a2=nextVar.allele;
-    const VariantPhase readPhase=a1==a2 ? IN_PHASE : ANTI_PHASED;
-    const VariantPhase phase=thisVar.v->getPhase();
-    //if(phase==UNPHASED) ...?
-    if(readPhase!=phase) return false;
+  const int L = variants.size();
+  for (int i = 0; i < L - 1; ++i)
+  {
+    const VariantInRead &thisVar = variants[i], nextVar = variants[i + 1];
+    const Allele a1 = thisVar.allele, a2 = nextVar.allele;
+    const VariantPhase readPhase = a1 == a2 ? IN_PHASE : ANTI_PHASED;
+    const VariantPhase phase = thisVar.v->getPhase();
+    // if(phase==UNPHASED) ...?
+    if (readPhase != phase)
+      return false;
   }
   return true;
 }
-
-

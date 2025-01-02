@@ -15,7 +15,7 @@ enum VariantPhase {
   ANTI_PHASED // this var is anti-phased with next var (ref-alt, alt-ref)
 };
 
-VariantPhase swap(VariantPhase);
+VariantPhase swapPhase(VariantPhase);
 
 #endif
 
